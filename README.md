@@ -6,22 +6,21 @@ MusicMic is a compact Windows 11 utility that copies one selected application's 
 
 Starting or stopping MusicMic must never change an application's playback endpoint, session volume, mute state, playback state, or the Windows default playback endpoint. The native engine captures a parallel, process-specific loopback copy.
 
-## Repository status
-
-The repository currently contains the managed domain contract and its unit tests. The WPF application, native WASAPI engine, integration layer, and installer are built in later implementation phases described in `docs/superpowers/plans/2026-08-14-musicmic-v1.md`.
-
 ## Prerequisites
 
 - Windows 11 x64
 - .NET 10 SDK
 - Visual Studio 2022 with Desktop development with C++ for later native/WPF phases
-- VB-CABLE installed separately for end-to-end use
+- VB-CABLE installed separately for end-to-end use; MusicMic does not bundle or install audio drivers
 
 ## Build and test
 
 ```powershell
-dotnet build MusicMic.sln -c Debug -p:Platform=x64
-dotnet test tests\MusicMic.Core.Tests\MusicMic.Core.Tests.csproj
+dotnet test MusicMic.sln -c Release -p:Platform=x64 --nologo
+dotnet build MusicMic.sln -c Release -p:Platform=x64 --nologo
+powershell -ExecutionPolicy Bypass -File scripts\Build-Installer.ps1 -Configuration Release -Version 1.0.0
 ```
 
-See `SPEC.md` for the authoritative V1 constraints.
+The installer is written to `installer\output\`. It installs MusicMic only; install [VB-CABLE](https://vb-audio.com/Cable/) independently. In Discord, select **User Settings → Voice & Video → Input Device → CABLE Output (VB-Audio Virtual Cable)**. MusicMic writes to the complementary **CABLE Input** render endpoint.
+
+See `SPEC.md` for authoritative V1 constraints and [the acceptance matrix](docs/acceptance-test-matrix.md) for the required release evidence, including playback-preservation and hardware-only checks.

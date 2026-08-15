@@ -1,0 +1,27 @@
+<Wix xmlns="http://wixtoolset.org/schemas/v4/wxs">
+  <Package Name="MusicMic"
+           Manufacturer="MusicMic"
+           Version="$(var.ProductVersion)"
+           UpgradeCode="A66CC740-FB74-4CFC-BCF3-5C6A24B96B39"
+           Language="1033"
+           Scope="perMachine">
+    <MajorUpgrade DowngradeErrorMessage="A newer version of MusicMic is already installed." />
+    <MediaTemplate EmbedCab="yes" />
+    <Property Id="ARPNOMODIFY" Value="1" />
+    <Property Id="ARPNOREPAIR" Value="1" />
+
+    <StandardDirectory Id="ProgramFiles64Folder">
+      <Directory Id="INSTALLFOLDER" Name="MusicMic" />
+    </StandardDirectory>
+
+    <Feature Id="Complete" Title="MusicMic" Level="1">
+      <ComponentGroupRef Id="PublishedFiles" />
+    </Feature>
+  </Package>
+
+  <Fragment>
+    <ComponentGroup Id="PublishedFiles" Directory="INSTALLFOLDER">
+      <Files Include="!(bindpath.PublishDir)\**" />
+    </ComponentGroup>
+  </Fragment>
+</Wix>
