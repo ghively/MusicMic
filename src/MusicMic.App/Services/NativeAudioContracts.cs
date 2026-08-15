@@ -11,6 +11,8 @@ public enum NativeAudioResult
     OutputUnavailable = 5,
     AudioFailure = 6,
     InternalError = 7,
+    SourceUnavailable = 8,
+    MicrophoneUnavailable = 9,
 }
 
 public enum NativeAudioState
@@ -31,7 +33,21 @@ public readonly record struct NativeAudioStatus(
     bool OutputAvailable,
     bool InjectionRequested,
     float SourcePeak,
-    float MicrophonePeak);
+    float MicrophonePeak,
+    float OutputPeak = 0);
+
+/// <summary>Managed representation of <c>MM_SourceInfo</c>; IDs are stable native identities.</summary>
+public readonly record struct NativeAudioSource(
+    string Id,
+    string DisplayName,
+    uint ProcessId,
+    bool IsSpotify);
+
+/// <summary>Managed representation of <c>MM_MicrophoneInfo</c>.</summary>
+public readonly record struct NativeAudioMicrophone(
+    string Id,
+    string DisplayName,
+    bool IsDefault);
 
 /// <summary>
 /// Injectable seam around the native ABI. It deliberately exposes no playback-routing operation.
@@ -45,9 +61,27 @@ public interface INativeAudioApi
 
     NativeAudioResult RefreshDevices();
 
+    NativeAudioResult GetSourceCount(out uint count);
+
+    NativeAudioResult GetSourceInfo(uint index, out NativeAudioSource source);
+
+    NativeAudioResult GetMicrophoneCount(out uint count);
+
+    NativeAudioResult GetMicrophoneInfo(uint index, out NativeAudioMicrophone microphone);
+
+    NativeAudioResult SelectSource(string sourceId);
+
+    NativeAudioResult SelectMicrophone(string microphoneId);
+
+    NativeAudioResult SetSourceGain(float gain);
+
+    NativeAudioResult SetMicrophoneGain(float gain);
+
     NativeAudioResult StartInjection();
 
     NativeAudioResult StopInjection();
+
+    NativeAudioResult HandleSystemResume();
 
     NativeAudioResult GetStatus(out NativeAudioStatus status);
 

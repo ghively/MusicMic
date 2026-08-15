@@ -10,4 +10,5 @@ public sealed record AudioEngineSnapshot(
     string? SelectedMicrophoneId,
     float SourcePeak = 0,
     float MicrophonePeak = 0,
+    float OutputPeak = 0,
     string? ErrorMessage = null);

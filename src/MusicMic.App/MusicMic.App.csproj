@@ -16,7 +16,13 @@
   <PropertyGroup>
     <NativeAudioLibraryPath>$(MSBuildProjectDirectory)\..\MusicMic.Audio\out-build\$(Configuration)\MusicMic.Audio.dll</NativeAudioLibraryPath>
   </PropertyGroup>
-  <Target Name="CopyNativeAudioLibrary" AfterTargets="Build;Publish" Condition="Exists('$(NativeAudioLibraryPath)')">
-    <Copy SourceFiles="$(NativeAudioLibraryPath)" DestinationFolder="$(OutDir)" SkipUnchangedFiles="true" />
+  <Target Name="ValidateNativeAudioLibrary" BeforeTargets="CopyNativeAudioLibraryToBuildOutput;CopyNativeAudioLibraryToPublish" Condition="!Exists('$(NativeAudioLibraryPath)')">
+    <Error Text="MusicMic.Audio.dll is required but was not found at $(NativeAudioLibraryPath). Build src\\MusicMic.Audio for x64 $(Configuration) first." />
+  </Target>
+  <Target Name="CopyNativeAudioLibraryToBuildOutput" AfterTargets="Build" DependsOnTargets="ValidateNativeAudioLibrary">
+    <Copy SourceFiles="$(NativeAudioLibraryPath)" DestinationFolder="$(TargetDir)" SkipUnchangedFiles="true" />
+  </Target>
+  <Target Name="CopyNativeAudioLibraryToPublish" AfterTargets="Publish" DependsOnTargets="ValidateNativeAudioLibrary">
+    <Copy SourceFiles="$(NativeAudioLibraryPath)" DestinationFolder="$(PublishDir)" SkipUnchangedFiles="true" />
   </Target>
 </Project>

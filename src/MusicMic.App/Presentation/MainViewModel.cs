@@ -40,6 +40,18 @@ public sealed class MainViewModel : ObservableObject
         audioEngine.SnapshotChanged += OnSnapshotChanged;
         ApplySnapshot(audioEngine.Snapshot, settings.SelectedSource, settings.SelectedMicrophoneId);
         themeService.ApplyTheme(theme);
+        // Cache persisted stable identities before native initialization. The engine applies them
+        // after discovery and never substitutes an unrelated source or microphone.
+        if (!string.IsNullOrWhiteSpace(settings.SelectedSource))
+        {
+            audioEngine.SelectSource(settings.SelectedSource);
+        }
+
+        if (!string.IsNullOrWhiteSpace(settings.SelectedMicrophoneId))
+        {
+            audioEngine.SelectMicrophone(settings.SelectedMicrophoneId);
+        }
+
         audioEngine.SetSourceGain(settings.SourceVolume);
         audioEngine.SetMicrophoneGain(settings.MicrophoneVolume);
         this.startupService.SetEnabled(startWithWindows);
@@ -219,8 +231,8 @@ public sealed class MainViewModel : ObservableObject
 
             string? sourceId = preferredSourceId ?? snapshot.SelectedSourceId;
             string? microphoneId = preferredMicrophoneId ?? snapshot.SelectedMicrophoneId;
-            SelectedSource = Sources.FirstOrDefault(item => item.Id == sourceId) ?? Sources.FirstOrDefault();
-            SelectedMicrophone = Microphones.FirstOrDefault(item => item.Id == microphoneId) ?? Microphones.FirstOrDefault();
+            SelectedSource = sourceId is null ? null : Sources.FirstOrDefault(item => item.Id == sourceId);
+            SelectedMicrophone = microphoneId is null ? null : Microphones.FirstOrDefault(item => item.Id == microphoneId);
             injection = snapshot.Injection;
         }
         finally

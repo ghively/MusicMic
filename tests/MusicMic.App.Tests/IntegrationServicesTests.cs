@@ -24,6 +24,80 @@ public sealed class IntegrationServicesTests
     }
 
     [Fact]
+    public async Task InitializeAsync_EnumeratesNativeDevices_SelectsSpotifyAndDefaultMicrophone_AndAppliesGains()
+    {
+        var native = new FakeNativeAudioApi
+        {
+            Sources =
+            [
+                new NativeAudioSource("browser-stable", "Browser", 4500, false),
+                new NativeAudioSource("spotify-stable", "Spotify", 4123, true),
+            ],
+            Microphones =
+            [
+                new NativeAudioMicrophone("usb-mic", "USB microphone", false),
+                new NativeAudioMicrophone("default-mic", "Default microphone", true),
+            ],
+        };
+        await using var service = new AudioEngineService(native, NoWaitAsyncDelay.Instance);
+
+        await service.InitializeAsync();
+        service.SetSourceGain(0.7);
+        service.SetMicrophoneGain(1.0);
+
+        Assert.Collection(
+            service.Snapshot.Sources,
+            source => Assert.Equal("Browser", source.DisplayName),
+            source => Assert.True(source.IsSpotify));
+        Assert.Equal("spotify-stable", service.Snapshot.SelectedSourceId);
+        Assert.Equal("default-mic", service.Snapshot.SelectedMicrophoneId);
+        Assert.Equal("spotify-stable", native.SelectedSourceId);
+        Assert.Equal("default-mic", native.SelectedMicrophoneId);
+        Assert.Equal(0.7f, native.SourceGain);
+        Assert.Equal(1f, native.MicrophoneGain);
+    }
+
+    [Fact]
+    public async Task HandlePowerResumeAsync_InvokesNativeResumeBeforeRefreshingAndRestoring()
+    {
+        var native = new FakeNativeAudioApi
+        {
+            Status = new NativeAudioStatus(NativeAudioState.Ready, true, true, true, false, 0, 0, 0),
+        };
+        await using var service = new AudioEngineService(native, NoWaitAsyncDelay.Instance);
+        await service.InitializeAsync();
+        await service.StartAsync();
+
+        await service.HandlePowerResumeAsync();
+
+        Assert.Equal(1, native.ResumeCalls);
+        Assert.Equal(2, native.StartCalls);
+    }
+
+    [Fact]
+    public async Task RefreshAsync_MapsSourceAndMicrophoneAvailabilityResultsToUiState()
+    {
+        var native = new FakeNativeAudioApi
+        {
+            Status = new NativeAudioStatus(NativeAudioState.Ready, true, true, true, false, 0, 0, 0),
+            RefreshResult = NativeAudioResult.SourceUnavailable,
+            Error = "Spotify is no longer producing audio.",
+        };
+        await using var service = new AudioEngineService(native, NoWaitAsyncDelay.Instance);
+        await service.InitializeAsync();
+
+        Assert.Equal(InjectionState.SourceUnavailable, service.Snapshot.Injection.State);
+        Assert.Equal("Spotify is no longer producing audio.", service.Snapshot.ErrorMessage);
+
+        native.RefreshResult = NativeAudioResult.MicrophoneUnavailable;
+        native.Error = "The selected microphone is unavailable.";
+        await service.RefreshAsync();
+
+        Assert.Equal(InjectionState.MicrophoneUnavailable, service.Snapshot.Injection.State);
+        Assert.Equal("The selected microphone is unavailable.", service.Snapshot.ErrorMessage);
+    }
+
+    [Fact]
     public async Task InitializeAsync_NativeFailureSurfacesNativeError()
     {
         var native = new FakeNativeAudioApi
@@ -121,17 +195,87 @@ public sealed class IntegrationServicesTests
     {
         public NativeAudioResult InitializeResult { get; set; } = NativeAudioResult.Ok;
 
-        public NativeAudioStatus Status { get; set; } = new(NativeAudioState.Ready, true, true, true, false, 0, 0);
+        public NativeAudioStatus Status { get; set; } = new(NativeAudioState.Ready, true, true, true, false, 0, 0, 0);
+
+        public NativeAudioResult RefreshResult { get; set; } = NativeAudioResult.Ok;
+
+        public IReadOnlyList<NativeAudioSource> Sources { get; set; } = [];
+
+        public IReadOnlyList<NativeAudioMicrophone> Microphones { get; set; } = [];
+
+        public string? SelectedSourceId { get; private set; }
+
+        public string? SelectedMicrophoneId { get; private set; }
+
+        public float SourceGain { get; private set; }
+
+        public float MicrophoneGain { get; private set; }
 
         public string Error { get; set; } = string.Empty;
 
         public int StartCalls { get; private set; }
 
+        public int ResumeCalls { get; private set; }
+
         public NativeAudioResult Initialize() => InitializeResult;
 
         public NativeAudioResult Shutdown() => NativeAudioResult.Ok;
 
-        public NativeAudioResult RefreshDevices() => NativeAudioResult.Ok;
+        public NativeAudioResult RefreshDevices() => RefreshResult;
+
+        public NativeAudioResult GetSourceCount(out uint count)
+        {
+            count = (uint)Sources.Count;
+            return NativeAudioResult.Ok;
+        }
+
+        public NativeAudioResult GetSourceInfo(uint index, out NativeAudioSource source)
+        {
+            source = index < Sources.Count ? Sources[(int)index] : default;
+            return index < Sources.Count ? NativeAudioResult.Ok : NativeAudioResult.NotFound;
+        }
+
+        public NativeAudioResult GetMicrophoneCount(out uint count)
+        {
+            count = (uint)Microphones.Count;
+            return NativeAudioResult.Ok;
+        }
+
+        public NativeAudioResult GetMicrophoneInfo(uint index, out NativeAudioMicrophone microphone)
+        {
+            microphone = index < Microphones.Count ? Microphones[(int)index] : default;
+            return index < Microphones.Count ? NativeAudioResult.Ok : NativeAudioResult.NotFound;
+        }
+
+        public NativeAudioResult SelectSource(string sourceId)
+        {
+            SelectedSourceId = sourceId;
+            return NativeAudioResult.Ok;
+        }
+
+        public NativeAudioResult SelectMicrophone(string microphoneId)
+        {
+            SelectedMicrophoneId = microphoneId;
+            return NativeAudioResult.Ok;
+        }
+
+        public NativeAudioResult SetSourceGain(float gain)
+        {
+            SourceGain = gain;
+            return NativeAudioResult.Ok;
+        }
+
+        public NativeAudioResult SetMicrophoneGain(float gain)
+        {
+            MicrophoneGain = gain;
+            return NativeAudioResult.Ok;
+        }
+
+        public NativeAudioResult HandleSystemResume()
+        {
+            ResumeCalls++;
+            return NativeAudioResult.Ok;
+        }
 
         public NativeAudioResult StartInjection()
         {
