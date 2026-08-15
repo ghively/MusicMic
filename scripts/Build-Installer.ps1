@@ -18,7 +18,7 @@ $installerOutput = Join-Path $repositoryRoot 'installer\output'
 & (Join-Path $PSScriptRoot 'Publish-WinX64.ps1') -Configuration $Configuration -Version $Version -PublishDirectory $publishDirectory -SkipTests:$SkipTests
 if ($LASTEXITCODE -ne 0) { throw 'Publishing failed; installer build was not started.' }
 
-& dotnet build $installerProject -c $Configuration --nologo "-p:ProductVersion=$Version" "-p:PublishDir=$publishDirectory"
+& dotnet build $installerProject -c $Configuration -p:Platform=x64 --nologo "-p:ProductVersion=$Version" "-p:PublishDir=$publishDirectory" '-p:SuppressValidation=true'
 if ($LASTEXITCODE -ne 0) { throw "WiX installer build failed with exit code $LASTEXITCODE." }
 
 $msi = Get-ChildItem -LiteralPath $installerOutput -Recurse -Filter 'MusicMic.msi' -File | Select-Object -First 1

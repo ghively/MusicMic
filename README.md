@@ -16,11 +16,20 @@ Starting or stopping MusicMic must never change an application's playback endpoi
 ## Build and test
 
 ```powershell
-dotnet test MusicMic.sln -c Release -p:Platform=x64 --nologo
-dotnet build MusicMic.sln -c Release -p:Platform=x64 --nologo
+# Builds the native x64 engine, restores the win-x64 runtime when required,
+# runs the managed tests, publishes the app, and validates the publish layout.
+powershell -ExecutionPolicy Bypass -File scripts\Publish-WinX64.ps1 -Configuration Release -Version 1.0.0
+
+# Runs the publish flow above, builds the MSI, and checks its required metadata.
 powershell -ExecutionPolicy Bypass -File scripts\Build-Installer.ps1 -Configuration Release -Version 1.0.0
 ```
 
-The installer is written to `installer\output\`. It installs MusicMic only; install [VB-CABLE](https://vb-audio.com/Cable/) independently. In Discord, select **User Settings → Voice & Video → Input Device → CABLE Output (VB-Audio Virtual Cable)**. MusicMic writes to the complementary **CABLE Input** render endpoint.
+The self-contained application files are written to `artifacts\publish\win-x64\`; the installer is written to `installer\output\MusicMic.msi`. The release scripts build the native engine first and pass that exact Release x64 DLL to the managed build, so publishing does not rely on a DLL previously left in the source tree.
+
+The installer installs MusicMic only; install [VB-CABLE](https://vb-audio.com/Cable/) independently. In Discord, select **User Settings → Voice & Video → Input Device → CABLE Output (VB-Audio Virtual Cable)**. MusicMic writes to the complementary **CABLE Input** render endpoint.
+
+## Release validation
+
+The automated package smoke test checks the self-contained publish layout, the required native DLL, its non-empty PE image, its x64 architecture, and the MSI product metadata. Before release, complete the hardware acceptance matrix as well: source-only, microphone-only, and combined audio; selected-process privacy; source/microphone/sleep recovery; installer/uninstaller/reinstall; and direct verification that Start and Stop preserve the selected app's playback endpoint, volume, mute state, playback state, and Windows defaults. These hardware-dependent checks cannot be simulated by the build scripts.
 
 See `SPEC.md` for authoritative V1 constraints and [the acceptance matrix](docs/acceptance-test-matrix.md) for the required release evidence, including playback-preservation and hardware-only checks.

@@ -1,11 +1,15 @@
 [CmdletBinding()]
 param(
-    [string]$PublishDirectory = (Join-Path $PSScriptRoot '..\artifacts\publish\win-x64'),
+    [string]$PublishDirectory,
     [string]$MsiPath
 )
 
 $ErrorActionPreference = 'Stop'
 Set-StrictMode -Version Latest
+
+if ([string]::IsNullOrWhiteSpace($PublishDirectory)) {
+    $PublishDirectory = Join-Path ([IO.Path]::GetFullPath((Join-Path $PSScriptRoot '..'))) 'artifacts\publish\win-x64'
+}
 
 $publishPath = [IO.Path]::GetFullPath($PublishDirectory)
 if (-not (Test-Path -LiteralPath $publishPath -PathType Container)) {
@@ -24,6 +28,22 @@ foreach ($requiredFile in $requiredFiles) {
     }
 }
 
+$nativeDll = Join-Path $publishPath 'MusicMic.Audio.dll'
+$nativeHeader = [IO.File]::ReadAllBytes($nativeDll)
+if ($nativeHeader.Length -lt 64 -or $nativeHeader[0] -ne 0x4D -or $nativeHeader[1] -ne 0x5A) {
+    throw 'Package smoke test failed: MusicMic.Audio.dll is not a valid Windows PE image.'
+}
+
+$peOffset = [BitConverter]::ToInt32($nativeHeader, 0x3C)
+if ($peOffset -lt 0 -or ($peOffset + 6) -gt $nativeHeader.Length -or $nativeHeader[$peOffset] -ne 0x50 -or $nativeHeader[$peOffset + 1] -ne 0x45) {
+    throw 'Package smoke test failed: MusicMic.Audio.dll has an invalid PE header.'
+}
+
+$machine = [BitConverter]::ToUInt16($nativeHeader, $peOffset + 4)
+if ($machine -ne 0x8664) {
+    throw ('Package smoke test failed: MusicMic.Audio.dll is not x64 (PE machine 0x{0:X4}).' -f $machine)
+}
+
 if ($MsiPath) {
     $resolvedMsi = [IO.Path]::GetFullPath($MsiPath)
     if (-not (Test-Path -LiteralPath $resolvedMsi -PathType Leaf)) {
@@ -39,11 +59,11 @@ if ($MsiPath) {
 
         $record = $installer.CreateRecord(1)
         $record.StringData(1) = $Name
-        $view.Execute($record)
+        $null = $view.Execute($record)
         $result = $view.Fetch()
         $view.Close()
         if ($null -eq $result) { return $null }
-        return $result.StringData(1)
+        return $result.StringData(1).Trim()
     }
 
     $expectedProperties = @{

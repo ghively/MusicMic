@@ -2,6 +2,8 @@
 **/bin/
 **/obj/
 artifacts/
+/build/
+*.obj
 
 # Repository-local .NET CLI state
 .dotnet-cli/
@@ -20,6 +22,7 @@ TestResults/
 
 # Native build output
 out/
+/src/MusicMic.Audio/out-build*/
 CMakeSettings.json
 
 # Packaging output
