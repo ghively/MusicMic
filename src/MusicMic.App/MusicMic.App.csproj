@@ -9,7 +9,16 @@
     <PlatformTarget>x64</PlatformTarget>
     <AssemblyName>MusicMic</AssemblyName>
     <RootNamespace>MusicMic.App</RootNamespace>
+    <ApplicationIcon>Assets\MusicMic.ico</ApplicationIcon>
+    <Product>MusicMic</Product>
+    <Company>MusicMic</Company>
+    <AssemblyTitle>MusicMic</AssemblyTitle>
+    <Description>Shares one application's audio and one microphone as a single virtual microphone.</Description>
   </PropertyGroup>
+
+  <ItemGroup>
+    <Resource Include="Assets\MusicMic.ico" />
+  </ItemGroup>
   <ItemGroup>
     <ProjectReference Include="..\MusicMic.Core\MusicMic.Core.csproj" />
   </ItemGroup>

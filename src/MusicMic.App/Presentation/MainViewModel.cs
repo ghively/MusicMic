@@ -190,7 +190,7 @@ public sealed class MainViewModel : ObservableObject
     public bool CanToggleInjection => IsInjecting ||
         (injection.IsOutputAvailable && SelectedSource is not null && SelectedMicrophone is not null);
 
-    public string PrimaryActionText => IsInjecting ? "STOP" : "START INJECTING";
+    public string PrimaryActionText => IsInjecting ? "Stop injecting" : "Start injecting";
 
     public string ActiveSourceName => SelectedSource?.DisplayName ?? "Source reconnecting";
 

@@ -46,13 +46,13 @@ public sealed class MainViewModelTests
         await viewModel.ToggleInjectionAsync();
 
         Assert.True(viewModel.IsInjecting);
-        Assert.Equal("STOP", viewModel.PrimaryActionText);
+        Assert.Equal("Stop injecting", viewModel.PrimaryActionText);
         Assert.Equal("Injecting", viewModel.StatusText);
 
         await viewModel.ToggleInjectionAsync();
 
         Assert.False(viewModel.IsInjecting);
-        Assert.Equal("START INJECTING", viewModel.PrimaryActionText);
+        Assert.Equal("Start injecting", viewModel.PrimaryActionText);
         Assert.Equal("Ready", viewModel.StatusText);
     }
 

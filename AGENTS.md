@@ -41,15 +41,16 @@ Do not add:
 
 ## UI
 
-docs/ui/approved-ui-reference.png is authoritative.
+docs/ui/tray-flyout.md is authoritative (docs/ui/approved-ui-reference.png overrides it when present).
 
 Required:
-- compact one-window utility
-- approved idle state
-- approved active state
+- notification-area utility: tray icon opens a single flyout, no taskbar window
+- idle state
+- active state
 - light mode
 - dark mode
 - system theme
+- Windows 11 platform values only: system backdrop, WinUI colour tokens, the user's accent colour, Segoe UI Variable
 
 No sidebar.
 No dashboard.

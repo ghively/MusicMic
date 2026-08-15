@@ -2,6 +2,15 @@
 
 MusicMic is a compact Windows 11 utility that copies one selected application's rendered audio into a microphone feed while leaving the application's normal playback untouched. It mixes that copy with one physical microphone and writes the result to the VB-CABLE virtual input included by its setup program.
 
+## How it runs
+
+MusicMic lives in the notification area. Select its tray icon to open a flyout anchored beside the
+icon — the same shape, backdrop, and dismissal behaviour as the Windows 11 volume flyout — or
+right-click the icon for a menu with status, start/stop, source, microphone, settings, and exit.
+It has no taskbar window, and launching it again (from the Start menu shortcut, for example) opens
+the flyout of the copy that is already running rather than starting a second one. See
+[the UI reference](docs/ui/tray-flyout.md) for the layout and the platform values it uses.
+
 ## Non-negotiable routing rule
 
 Starting or stopping MusicMic must never change an application's playback endpoint, session volume, mute state, playback state, or the Windows default playback endpoint. The native engine captures a parallel, process-specific loopback copy.
@@ -24,7 +33,13 @@ powershell -ExecutionPolicy Bypass -File scripts\Publish-WinX64.ps1 -Configurati
 powershell -ExecutionPolicy Bypass -File scripts\Build-Installer.ps1 -Configuration Release -Version 1.0.0
 ```
 
-The self-contained application files are written to `artifacts\publish\win-x64\`; the installers are written to `installer\output\MusicMic.msi` and `installer\output\MusicMicSetup.exe`. The release scripts build the native engine first and pass that exact Release x64 DLL to the managed build, so publishing does not rely on a DLL previously left in the source tree.
+The self-contained application files are written to `artifacts\publish\win-x64\`; the installers are written to `installer\output\MusicMic.msi` and `installer\output\MusicMicSetup.exe`.
+
+Installing removes the MusicMic that is already on the machine rather than adding a second entry:
+the package declares a major upgrade that runs before the new files are copied, allows upgrades
+between builds that share a version, and closes a running MusicMic first so no reboot is needed.
+Give each release a version higher than the last (`-Version 1.1.0`) so the bootstrapper's own
+Programs and Features entry is replaced as well. The release scripts build the native engine first and pass that exact Release x64 DLL to the managed build, so publishing does not rely on a DLL previously left in the source tree.
 
 `MusicMicSetup.exe` includes the official base VB-CABLE driver from [VB-Audio](https://www.vb-cable.com/). VB-CABLE is donationware; all participations are welcome. Its vendor setup runs first with administrator approval, and Windows may require a reboot before `CABLE Input` and `CABLE Output` become available. MusicMic never changes the Windows default playback device. In Discord, select **User Settings → Voice & Video → Input Device → CABLE Output (VB-Audio Virtual Cable)**. MusicMic writes to the complementary **CABLE Input** render endpoint.
 

@@ -12,5 +12,6 @@
   <ItemGroup>
     <Compile Include="Package.wxs" />
     <BindPath Include="$(PublishDir)" />
+    <PackageReference Include="WixToolset.Util.wixext" Version="5.0.2" />
   </ItemGroup>
 </Project>
