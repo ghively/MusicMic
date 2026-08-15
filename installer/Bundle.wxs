@@ -1,0 +1,18 @@
+<Wix xmlns="http://wixtoolset.org/schemas/v4/wxs"
+     xmlns:bal="http://wixtoolset.org/schemas/v4/wxs/bal">
+  <Bundle Name="MusicMic Setup"
+          Manufacturer="MusicMic"
+          Version="$(var.ProductVersion)"
+          UpgradeCode="C2622A4A-9337-4720-8DC1-3D4B7AE03BEF">
+    <BootstrapperApplication>
+      <bal:WixStandardBootstrapperApplication
+          LicenseUrl=""
+          Theme="hyperlinkLicense"
+          SuppressOptionsUI="yes"
+          SuppressRepair="yes" />
+    </BootstrapperApplication>
+    <Chain>
+      <MsiPackage SourceFile="$(var.MsiPath)" />
+    </Chain>
+  </Bundle>
+</Wix>

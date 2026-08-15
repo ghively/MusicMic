@@ -1,0 +1,16 @@
+<Project Sdk="WixToolset.Sdk/5.0.2">
+  <PropertyGroup>
+    <OutputType>Bundle</OutputType>
+    <Platform>x64</Platform>
+    <OutputName>MusicMicSetup</OutputName>
+    <OutputPath>$(MSBuildThisFileDirectory)output\</OutputPath>
+    <MsiPath Condition="'$(MsiPath)' == ''">$([System.IO.Path]::GetFullPath('$(MSBuildThisFileDirectory)output\MusicMic.msi'))</MsiPath>
+    <ProductVersion Condition="'$(ProductVersion)' == ''">1.0.0</ProductVersion>
+    <DefineConstants>MsiPath=$(MsiPath);ProductVersion=$(ProductVersion)</DefineConstants>
+    <EnableDefaultItems>false</EnableDefaultItems>
+  </PropertyGroup>
+  <ItemGroup>
+    <Compile Include="Bundle.wxs" />
+    <PackageReference Include="WixToolset.BootstrapperApplications.wixext" Version="5.0.2" />
+  </ItemGroup>
+</Project>

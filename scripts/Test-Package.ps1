@@ -1,7 +1,8 @@
 [CmdletBinding()]
 param(
     [string]$PublishDirectory,
-    [string]$MsiPath
+    [string]$MsiPath,
+    [string]$BundlePath
 )
 
 $ErrorActionPreference = 'Stop'
@@ -78,6 +79,22 @@ if ($MsiPath) {
         if ($actual -ne $entry.Value) {
             throw "Installer smoke test failed: MSI property $($entry.Key) is '$actual', expected '$($entry.Value)'."
         }
+    }
+}
+
+if ($BundlePath) {
+    $resolvedBundle = [IO.Path]::GetFullPath($BundlePath)
+    if (-not (Test-Path -LiteralPath $resolvedBundle -PathType Leaf)) {
+        throw "Installer smoke test failed: bootstrapper executable does not exist: $resolvedBundle"
+    }
+
+    if ((Get-Item -LiteralPath $resolvedBundle).Length -eq 0) {
+        throw "Installer smoke test failed: bootstrapper executable is empty: $resolvedBundle"
+    }
+
+    $bundleHeader = [IO.File]::ReadAllBytes($resolvedBundle)
+    if ($bundleHeader.Length -lt 64 -or $bundleHeader[0] -ne 0x4D -or $bundleHeader[1] -ne 0x5A) {
+        throw 'Installer smoke test failed: bootstrapper executable is not a valid Windows PE image.'
     }
 }
 
