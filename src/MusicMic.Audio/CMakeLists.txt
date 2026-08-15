@@ -8,14 +8,25 @@ set(CMAKE_CXX_EXTENSIONS OFF)
 
 include(CTest)
 
+add_library(MusicMic.Audio SHARED
+    src/engine_state.cpp
+    src/mixer.cpp
+    src/exports.cpp
+)
+target_include_directories(MusicMic.Audio PUBLIC include PRIVATE src)
+target_compile_definitions(MusicMic.Audio PRIVATE MUSICMIC_AUDIO_EXPORTS UNICODE _UNICODE WIN32_LEAN_AND_MEAN NOMINMAX)
+set_target_properties(MusicMic.Audio PROPERTIES OUTPUT_NAME "MusicMic.Audio")
+
 if(BUILD_TESTING)
     add_executable(MusicMic.Audio.Tests
         src/mixer.cpp
         src/engine_state.cpp
         tests/mixer_tests.cpp
         tests/engine_state_tests.cpp
+        tests/abi_tests.cpp
         tests/test_main.cpp
     )
-    target_include_directories(MusicMic.Audio.Tests PRIVATE src)
+    target_include_directories(MusicMic.Audio.Tests PRIVATE include src)
+    target_link_libraries(MusicMic.Audio.Tests PRIVATE MusicMic.Audio)
     add_test(NAME MusicMic.Audio.Tests COMMAND MusicMic.Audio.Tests)
 endif()
