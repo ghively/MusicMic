@@ -1,14 +1,31 @@
-<Wix xmlns="http://wixtoolset.org/schemas/v4/wxs">
+<Wix xmlns="http://wixtoolset.org/schemas/v4/wxs"
+     xmlns:util="http://wixtoolset.org/schemas/v4/wxs/util">
   <Package Name="MusicMic"
            Manufacturer="MusicMic"
            Version="$(var.ProductVersion)"
            UpgradeCode="A66CC740-FB74-4CFC-BCF3-5C6A24B96B39"
            Language="1033"
            Scope="perMachine">
-    <MajorUpgrade DowngradeErrorMessage="A newer version of MusicMic is already installed." />
+    <!-- Remove every previously installed MusicMic before the new files are laid down.
+         AllowSameVersionUpgrades also replaces an existing build that carries the same
+         ProductVersion, so repeated installs can never stack up side by side in
+         Programs and Features. -->
+    <MajorUpgrade AllowSameVersionUpgrades="yes"
+                  Schedule="afterInstallInitialize"
+                  DowngradeErrorMessage="A newer version of MusicMic is already installed." />
+
+    <!-- MusicMic runs from the notification area, so an in-place update has to close the
+         running copy instead of asking the user to reboot. -->
+    <util:CloseApplication Id="CloseMusicMic"
+                           Target="MusicMic.exe"
+                           TerminateProcess="0"
+                           RebootPrompt="no" />
+
     <MediaTemplate EmbedCab="yes" />
     <Property Id="ARPNOMODIFY" Value="1" />
     <Property Id="ARPNOREPAIR" Value="1" />
+    <Property Id="ARPPRODUCTICON" Value="MusicMic.exe" />
+    <Icon Id="MusicMic.exe" SourceFile="$(var.PublishDir)\MusicMic.exe" />
 
     <StandardDirectory Id="ProgramFiles64Folder">
       <Directory Id="INSTALLFOLDER" Name="MusicMic" />
@@ -19,8 +36,10 @@
         <Component Id="MusicMicStartMenuShortcut" Guid="*">
           <Shortcut Id="MusicMicStartMenuShortcut"
                     Name="MusicMic"
+                    Description="Share one app's audio and your microphone as a single virtual microphone."
                     Target="[INSTALLFOLDER]MusicMic.exe"
-                    WorkingDirectory="INSTALLFOLDER" />
+                    WorkingDirectory="INSTALLFOLDER"
+                    Icon="MusicMic.exe" />
           <RemoveFolder Id="RemoveMusicMicProgramMenuFolder" On="uninstall" />
           <RegistryValue Root="HKLM"
                          Key="Software\MusicMic"

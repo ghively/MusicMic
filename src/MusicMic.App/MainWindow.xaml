@@ -2,107 +2,189 @@
         xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
         xmlns:core="clr-namespace:MusicMic.Core;assembly=MusicMic.Core"
-        Title="MusicMic" Width="390" Height="465" MinWidth="370" MaxWidth="420" MinHeight="440"
-        WindowStartupLocation="CenterScreen" ResizeMode="CanMinimize" WindowStyle="None"
-        AllowsTransparency="False" Background="Transparent" Foreground="{DynamicResource PrimaryTextBrush}"
+        Title="MusicMic" Width="360" SizeToContent="Height"
+        WindowStartupLocation="Manual" ResizeMode="NoResize" WindowStyle="None"
+        ShowInTaskbar="False" Topmost="True" AllowsTransparency="False" Background="Transparent"
+        Foreground="{DynamicResource PrimaryTextBrush}"
         FontFamily="Segoe UI Variable Text, Segoe UI" FontSize="14" UseLayoutRounding="True" SnapsToDevicePixels="True"
-        AutomationProperties.Name="MusicMic audio injection utility">
+        TextOptions.TextFormattingMode="Ideal" TextOptions.TextRenderingMode="ClearType"
+        AutomationProperties.Name="MusicMic notification area flyout">
+    <!-- Caption height 0: this is a shell-style flyout, not a draggable window. The DWM frame is
+         still extended so the system acrylic backdrop and rounded corners apply. -->
     <WindowChrome.WindowChrome>
-        <WindowChrome CaptionHeight="48" CornerRadius="8" GlassFrameThickness="-1" ResizeBorderThickness="5" UseAeroCaptionButtons="False" />
+        <WindowChrome CaptionHeight="0" CornerRadius="0" GlassFrameThickness="-1" ResizeBorderThickness="0" UseAeroCaptionButtons="False" />
     </WindowChrome.WindowChrome>
 
-    <Border x:Name="BackdropHost" Background="{DynamicResource WindowBackgroundBrush}" CornerRadius="8" BorderBrush="{DynamicResource OuterBorderBrush}" BorderThickness="1">
+    <Border x:Name="BackdropHost" Background="{DynamicResource BackdropFallbackBrush}" CornerRadius="8"
+            BorderBrush="{DynamicResource OuterBorderBrush}" BorderThickness="1" RenderTransformOrigin="0.5,1">
+        <Border.RenderTransform>
+            <TranslateTransform x:Name="EntranceTransform" Y="0" />
+        </Border.RenderTransform>
         <Grid>
-            <Grid.RowDefinitions><RowDefinition Height="48" /><RowDefinition Height="1" /><RowDefinition Height="*" /></Grid.RowDefinitions>
+            <Grid.RowDefinitions>
+                <RowDefinition Height="44" />
+                <RowDefinition Height="Auto" />
+            </Grid.RowDefinitions>
 
-            <Grid Grid.Row="0" Margin="14,0,8,0">
-                <Grid.ColumnDefinitions><ColumnDefinition /><ColumnDefinition Width="Auto" /><ColumnDefinition Width="Auto" /></Grid.ColumnDefinitions>
-                <StackPanel VerticalAlignment="Center">
-                    <TextBlock Text="MusicMic" FontSize="15" FontWeight="SemiBold" />
-                    <TextBlock Text="Virtual microphone" Margin="0,1,0,0" FontSize="11" Foreground="{DynamicResource SecondaryTextBrush}" />
-                </StackPanel>
+            <!-- Header -->
+            <Grid Grid.Row="0" Margin="14,0,6,0">
+                <Grid.ColumnDefinitions>
+                    <ColumnDefinition />
+                    <ColumnDefinition Width="Auto" />
+                </Grid.ColumnDefinitions>
+                <TextBlock Text="MusicMic" Style="{StaticResource BodyStrongTextStyle}" VerticalAlignment="Center" />
                 <Button Grid.Column="1" Content="&#xE713;" Style="{StaticResource FluentIconButtonStyle}" Click="OpenSettings"
-                        WindowChrome.IsHitTestVisibleInChrome="True" AutomationProperties.Name="Open MusicMic settings" ToolTip="Settings" />
-                <Button Grid.Column="2" Content="&#xE8BB;" Style="{StaticResource FluentIconButtonStyle}" Click="CloseToTray"
-                        WindowChrome.IsHitTestVisibleInChrome="True" AutomationProperties.Name="Close MusicMic to notification area" ToolTip="Close to notification area" />
+                        WindowChrome.IsHitTestVisibleInChrome="True" AutomationProperties.Name="MusicMic settings" ToolTip="Settings" />
             </Grid>
 
-            <Border Grid.Row="1" Background="{DynamicResource DividerBrush}" />
-
-            <Grid Grid.Row="2" Margin="16,14,16,14">
-                <Grid.RowDefinitions>
-                    <RowDefinition Height="Auto" /><RowDefinition Height="Auto" /><RowDefinition Height="Auto" />
-                    <RowDefinition Height="Auto" /><RowDefinition Height="Auto" /><RowDefinition Height="*" /><RowDefinition Height="Auto" />
-                </Grid.RowDefinitions>
-
-                <TextBlock Grid.Row="0" Text="Volume mixer" FontSize="15" FontWeight="SemiBold" Margin="0,0,0,11" />
-
-                <Grid Grid.Row="1" Margin="0,0,0,15">
-                    <Grid.RowDefinitions><RowDefinition Height="Auto" /><RowDefinition Height="Auto" /></Grid.RowDefinitions>
-                    <Grid.ColumnDefinitions><ColumnDefinition Width="30" /><ColumnDefinition /><ColumnDefinition Width="Auto" /></Grid.ColumnDefinitions>
-                    <TextBlock Grid.RowSpan="2" Text="&#xE189;" FontFamily="Segoe Fluent Icons" FontSize="15" Foreground="{DynamicResource AccentBrush}" VerticalAlignment="Top" Margin="1,10,0,0" />
-                    <ComboBox x:Name="SourceSelector" Grid.Column="1" ItemsSource="{Binding Sources}" SelectedItem="{Binding SelectedSource}"
-                              DisplayMemberPath="DisplayName" IsEnabled="{Binding CanChangeSelection}" Style="{StaticResource FluentComboBoxStyle}"
-                              AutomationProperties.Name="Audio source" ToolTip="Choose the application audio to share" />
-                    <TextBlock Grid.Column="2" Text="{Binding SourcePercentageLabel}" Foreground="{DynamicResource SecondaryTextBrush}" VerticalAlignment="Center" Margin="9,0,0,0" />
-                    <Slider x:Name="SourceVolumeSlider" Grid.Row="1" Grid.Column="1" Grid.ColumnSpan="2" Minimum="0" Maximum="100"
-                            Value="{Binding SourcePercentage}" IsEnabled="{Binding CanAdjustGains}" Style="{StaticResource FluentSliderStyle}"
-                            Margin="5,3,0,0" AutomationProperties.Name="Source volume percentage" />
-                </Grid>
-
-                <Border Grid.Row="2" Height="1" Background="{DynamicResource DividerBrush}" Margin="30,0,0,15" />
-
-                <Grid Grid.Row="3" Margin="0,0,0,16">
-                    <Grid.RowDefinitions><RowDefinition Height="Auto" /><RowDefinition Height="Auto" /></Grid.RowDefinitions>
-                    <Grid.ColumnDefinitions><ColumnDefinition Width="30" /><ColumnDefinition /><ColumnDefinition Width="Auto" /></Grid.ColumnDefinitions>
-                    <TextBlock Grid.RowSpan="2" Text="&#xE720;" FontFamily="Segoe Fluent Icons" FontSize="15" Foreground="{DynamicResource AccentBrush}" VerticalAlignment="Top" Margin="1,10,0,0" />
-                    <ComboBox x:Name="MicrophoneSelector" Grid.Column="1" ItemsSource="{Binding Microphones}" SelectedItem="{Binding SelectedMicrophone}"
-                              DisplayMemberPath="DisplayName" IsEnabled="{Binding CanChangeSelection}" Style="{StaticResource FluentComboBoxStyle}"
-                              AutomationProperties.Name="Physical microphone" ToolTip="Choose the microphone to include" />
-                    <TextBlock Grid.Column="2" Text="{Binding MicrophonePercentageLabel}" Foreground="{DynamicResource SecondaryTextBrush}" VerticalAlignment="Center" Margin="9,0,0,0" />
-                    <Slider x:Name="MicrophoneVolumeSlider" Grid.Row="1" Grid.Column="1" Grid.ColumnSpan="2" Minimum="0" Maximum="100"
-                            Value="{Binding MicrophonePercentage}" IsEnabled="{Binding CanAdjustGains}" Style="{StaticResource FluentSliderStyle}"
-                            Margin="5,3,0,0" AutomationProperties.Name="Microphone volume percentage" />
-                </Grid>
-
-                <Border Grid.Row="4" Background="{DynamicResource AccentSubtleBrush}" CornerRadius="5" Padding="10,8" Margin="0,0,0,12">
+            <StackPanel Grid.Row="1" Margin="12,0,12,12">
+                <!-- Application audio -->
+                <Border Style="{StaticResource FluentCardStyle}" Padding="12">
                     <Grid>
-                        <Grid.ColumnDefinitions><ColumnDefinition Width="18" /><ColumnDefinition /></Grid.ColumnDefinitions>
-                        <Ellipse Width="7" Height="7" VerticalAlignment="Top" Margin="0,6,0,0">
-                            <Ellipse.Style><Style TargetType="Ellipse">
-                                <Setter Property="Fill" Value="{DynamicResource AccentBrush}" />
+                        <Grid.RowDefinitions>
+                            <RowDefinition Height="Auto" />
+                            <RowDefinition Height="Auto" />
+                            <RowDefinition Height="Auto" />
+                        </Grid.RowDefinitions>
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="24" />
+                            <ColumnDefinition />
+                            <ColumnDefinition Width="Auto" />
+                        </Grid.ColumnDefinitions>
+
+                        <TextBlock Grid.Column="0" Text="&#xE767;" Style="{StaticResource IconTextStyle}"
+                                   HorizontalAlignment="Left" Foreground="{DynamicResource SecondaryTextBrush}" />
+                        <TextBlock Grid.Column="1" Text="App audio" Style="{StaticResource CaptionTextStyle}" VerticalAlignment="Center" />
+                        <TextBlock Grid.Column="2" Text="{Binding SourcePercentageLabel}" Style="{StaticResource CaptionTextStyle}"
+                                   VerticalAlignment="Center" MinWidth="32" TextAlignment="Right" />
+
+                        <ComboBox x:Name="SourceSelector" Grid.Row="1" Grid.ColumnSpan="3" Margin="0,6,0,0"
+                                  ItemsSource="{Binding Sources}" SelectedItem="{Binding SelectedSource}"
+                                  DisplayMemberPath="DisplayName" IsEnabled="{Binding CanChangeSelection}"
+                                  Style="{StaticResource FluentComboBoxStyle}"
+                                  AutomationProperties.Name="Application audio source"
+                                  ToolTip="Choose the application audio to share" />
+                        <Slider x:Name="SourceVolumeSlider" Grid.Row="2" Grid.ColumnSpan="3" Margin="0,6,0,0"
+                                Minimum="0" Maximum="100" Value="{Binding SourcePercentage}"
+                                IsEnabled="{Binding CanAdjustGains}" Style="{StaticResource FluentSliderStyle}"
+                                AutomationProperties.Name="Application audio volume percentage" />
+                    </Grid>
+                </Border>
+
+                <!-- Microphone -->
+                <Border Style="{StaticResource FluentCardStyle}" Padding="12" Margin="0,8,0,0">
+                    <Grid>
+                        <Grid.RowDefinitions>
+                            <RowDefinition Height="Auto" />
+                            <RowDefinition Height="Auto" />
+                            <RowDefinition Height="Auto" />
+                        </Grid.RowDefinitions>
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="24" />
+                            <ColumnDefinition />
+                            <ColumnDefinition Width="Auto" />
+                        </Grid.ColumnDefinitions>
+
+                        <TextBlock Grid.Column="0" Text="&#xE720;" Style="{StaticResource IconTextStyle}"
+                                   HorizontalAlignment="Left" Foreground="{DynamicResource SecondaryTextBrush}" />
+                        <TextBlock Grid.Column="1" Text="Microphone" Style="{StaticResource CaptionTextStyle}" VerticalAlignment="Center" />
+                        <TextBlock Grid.Column="2" Text="{Binding MicrophonePercentageLabel}" Style="{StaticResource CaptionTextStyle}"
+                                   VerticalAlignment="Center" MinWidth="32" TextAlignment="Right" />
+
+                        <ComboBox x:Name="MicrophoneSelector" Grid.Row="1" Grid.ColumnSpan="3" Margin="0,6,0,0"
+                                  ItemsSource="{Binding Microphones}" SelectedItem="{Binding SelectedMicrophone}"
+                                  DisplayMemberPath="DisplayName" IsEnabled="{Binding CanChangeSelection}"
+                                  Style="{StaticResource FluentComboBoxStyle}"
+                                  AutomationProperties.Name="Physical microphone"
+                                  ToolTip="Choose the microphone to include" />
+                        <Slider x:Name="MicrophoneVolumeSlider" Grid.Row="2" Grid.ColumnSpan="3" Margin="0,6,0,0"
+                                Minimum="0" Maximum="100" Value="{Binding MicrophonePercentage}"
+                                IsEnabled="{Binding CanAdjustGains}" Style="{StaticResource FluentSliderStyle}"
+                                AutomationProperties.Name="Microphone volume percentage" />
+                    </Grid>
+                </Border>
+
+                <!-- Status -->
+                <Grid Margin="2,12,2,0">
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="24" />
+                        <ColumnDefinition />
+                    </Grid.ColumnDefinitions>
+                    <Ellipse x:Name="StatusIndicator" Width="8" Height="8" VerticalAlignment="Top" Margin="0,6,0,0"
+                             HorizontalAlignment="Left">
+                        <Ellipse.Style>
+                            <Style TargetType="Ellipse">
+                                <Setter Property="Fill" Value="{DynamicResource SecondaryTextBrush}" />
                                 <Style.Triggers>
-                                    <DataTrigger Binding="{Binding IsInjecting}" Value="True"><Setter Property="Fill" Value="{DynamicResource SuccessBrush}" /></DataTrigger>
-                                    <DataTrigger Binding="{Binding State}" Value="{x:Static core:InjectionState.OutputUnavailable}"><Setter Property="Fill" Value="{DynamicResource ErrorBrush}" /></DataTrigger>
+                                    <DataTrigger Binding="{Binding IsInjecting}" Value="True">
+                                        <Setter Property="Fill" Value="{DynamicResource SuccessBrush}" />
+                                        <DataTrigger.EnterActions>
+                                            <BeginStoryboard x:Name="PulseStoryboard">
+                                                <Storyboard>
+                                                    <DoubleAnimation Storyboard.TargetProperty="Opacity" From="1" To="0.35"
+                                                                     Duration="0:0:1" AutoReverse="True" RepeatBehavior="Forever" />
+                                                </Storyboard>
+                                            </BeginStoryboard>
+                                        </DataTrigger.EnterActions>
+                                        <DataTrigger.ExitActions>
+                                            <StopStoryboard BeginStoryboardName="PulseStoryboard" />
+                                        </DataTrigger.ExitActions>
+                                    </DataTrigger>
+                                    <DataTrigger Binding="{Binding State}" Value="{x:Static core:InjectionState.OutputUnavailable}">
+                                        <Setter Property="Fill" Value="{DynamicResource ErrorBrush}" />
+                                    </DataTrigger>
+                                    <DataTrigger Binding="{Binding State}" Value="{x:Static core:InjectionState.Error}">
+                                        <Setter Property="Fill" Value="{DynamicResource ErrorBrush}" />
+                                    </DataTrigger>
                                 </Style.Triggers>
-                            </Style></Ellipse.Style>
-                        </Ellipse>
-                        <StackPanel Grid.Column="1">
-                            <TextBlock Text="{Binding StatusText}" FontWeight="SemiBold" FontSize="13" />
-                            <TextBlock Text="{Binding StatusDetail}" FontSize="11" Foreground="{DynamicResource SecondaryTextBrush}" TextWrapping="Wrap" Margin="0,1,0,0" />
-                        </StackPanel>
-                    </Grid>
-                </Border>
+                            </Style>
+                        </Ellipse.Style>
+                    </Ellipse>
+                    <StackPanel Grid.Column="1">
+                        <TextBlock Text="{Binding StatusText}" Style="{StaticResource BodyStrongTextStyle}"
+                                   AutomationProperties.Name="MusicMic status" />
+                        <TextBlock Text="{Binding StatusDetail}" Style="{StaticResource CaptionTextStyle}"
+                                   TextWrapping="Wrap" TextTrimming="None" Margin="0,1,0,0" />
+                    </StackPanel>
+                </Grid>
 
-                <Button Grid.Row="5" VerticalAlignment="Top" Content="{Binding PrimaryActionText}" Command="{Binding ToggleInjectionCommand}"
-                        IsEnabled="{Binding CanToggleInjection}" AutomationProperties.Name="Start or stop MusicMic injection">
-                    <Button.Style><Style TargetType="Button" BasedOn="{StaticResource FluentActionButtonStyle}">
-                        <Style.Triggers><DataTrigger Binding="{Binding IsInjecting}" Value="True">
-                            <Setter Property="Background" Value="{DynamicResource ControlFillBrush}" /><Setter Property="Foreground" Value="{DynamicResource PrimaryTextBrush}" />
-                            <Setter Property="BorderBrush" Value="{DynamicResource DividerBrush}" /><Setter Property="BorderThickness" Value="1" />
-                        </DataTrigger></Style.Triggers>
-                    </Style></Button.Style>
-                </Button>
+                <!-- Primary action. Idle uses the Fluent accent button; the running state uses the
+                     standard button so "Stop" never competes with the accent affordance. -->
+                <Grid Margin="0,12,0,0">
+                    <Button x:Name="PrimaryActionButton" HorizontalAlignment="Stretch"
+                            Style="{StaticResource FluentActionButtonStyle}"
+                            Content="{Binding PrimaryActionText}" Command="{Binding ToggleInjectionCommand}"
+                            IsEnabled="{Binding CanToggleInjection}"
+                            AutomationProperties.Name="Start or stop MusicMic injection">
+                        <Button.Visibility>
+                            <Binding Path="IsInjecting" Converter="{StaticResource FalseToVisibleConverter}" />
+                        </Button.Visibility>
+                    </Button>
+                    <Button x:Name="StopActionButton" HorizontalAlignment="Stretch"
+                            Style="{StaticResource FluentStandardButtonStyle}"
+                            Content="{Binding PrimaryActionText}" Command="{Binding ToggleInjectionCommand}"
+                            IsEnabled="{Binding CanToggleInjection}"
+                            AutomationProperties.Name="Start or stop MusicMic injection">
+                        <Button.Visibility>
+                            <Binding Path="IsInjecting" Converter="{StaticResource TrueToVisibleConverter}" />
+                        </Button.Visibility>
+                    </Button>
+                </Grid>
 
-                <Border Grid.Row="6" BorderBrush="{DynamicResource DividerBrush}" BorderThickness="0,1,0,0" Padding="0,11,0,0" Margin="0,13,0,0">
-                    <Grid>
-                        <Grid.ColumnDefinitions><ColumnDefinition Width="22" /><ColumnDefinition /></Grid.ColumnDefinitions>
-                        <TextBlock Text="&#xE767;" FontFamily="Segoe Fluent Icons" FontSize="13" Foreground="{DynamicResource AccentBrush}" Margin="1,1,0,0" />
-                        <TextBlock Grid.Column="1" Text="{Binding PlaybackAssuranceText}" FontSize="11" Foreground="{DynamicResource SecondaryTextBrush}"
-                                   TextWrapping="Wrap" LineHeight="16" AutomationProperties.Name="Normal playback assurance" />
-                    </Grid>
-                </Border>
-            </Grid>
+                <!-- Playback assurance -->
+                <Grid Margin="2,12,2,0">
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="24" />
+                        <ColumnDefinition />
+                    </Grid.ColumnDefinitions>
+                    <TextBlock Text="&#xE946;" Style="{StaticResource IconTextStyle}" FontSize="14"
+                               HorizontalAlignment="Left" VerticalAlignment="Top" Margin="0,1,0,0"
+                               Foreground="{DynamicResource SecondaryTextBrush}" />
+                    <TextBlock Grid.Column="1" Text="{Binding PlaybackAssuranceText}" Style="{StaticResource CaptionTextStyle}"
+                               TextWrapping="Wrap" TextTrimming="None" LineHeight="16"
+                               AutomationProperties.Name="Normal playback assurance" />
+                </Grid>
+            </StackPanel>
         </Grid>
     </Border>
 </Window>

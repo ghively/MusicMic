@@ -52,21 +52,32 @@ public interface ITrayService : IDisposable
         Action exit);
 
     void Update(AudioEngineSnapshot snapshot);
+
+    void UpdateAppearance(TrayMenuAppearance appearance);
+
+    void ShowRunningInBackgroundNotice();
 }
 
-/// <summary>Minimal notification-area controls for the same one-window workflow.</summary>
+/// <summary>
+/// The notification-area presence: a monochrome shell-style icon, a Windows 11 style menu, and
+/// left-click access to the flyout. This is MusicMic's primary entry point — the app has no
+/// taskbar window of its own.
+/// </summary>
 public sealed class TrayService : ITrayService
 {
     private readonly NotifyIcon notifyIcon = new();
+    private readonly ToolStripMenuItem openItem = new("Open MusicMic");
     private readonly ToolStripMenuItem statusItem = new() { Enabled = false };
     private readonly ToolStripMenuItem toggleItem = new();
-    private readonly ToolStripMenuItem sourceItem = new("Audio Source");
+    private readonly ToolStripMenuItem sourceItem = new("Audio source");
     private readonly ToolStripMenuItem microphoneItem = new("Microphone");
-    private readonly ToolStripMenuItem openItem = new("Open MusicMic");
     private readonly ToolStripMenuItem settingsItem = new("Settings");
     private readonly ToolStripMenuItem exitItem = new("Exit");
     private Action<string>? selectSource;
     private Action<string>? selectMicrophone;
+    private TrayMenuAppearance appearance = new(TrayIconFactory.TaskbarIsDark(), SystemColors.Highlight);
+    private Icon? currentIcon;
+    private bool isInjecting;
 
     public void Initialize(
         Func<CancellationToken, Task> toggleInjection,
@@ -87,9 +98,24 @@ public sealed class TrayService : ITrayService
         openItem.Click += (_, _) => open();
         settingsItem.Click += (_, _) => openSettings();
         exitItem.Click += (_, _) => exit();
-        notifyIcon.ContextMenuStrip = new ContextMenuStrip();
-        notifyIcon.ContextMenuStrip.Items.AddRange(
+
+        var menu = new ContextMenuStrip
+        {
+            Renderer = new TrayMenuRenderer(appearance),
+            ShowCheckMargin = false,
+            ShowImageMargin = true,
+            Padding = new Padding(0, 4, 0, 4),
+        };
+        Font? menuFont = TryCreateMenuFont();
+        if (menuFont is not null)
+        {
+            menu.Font = menuFont;
+        }
+
+        menu.Items.AddRange(
         [
+            openItem,
+            new ToolStripSeparator(),
             statusItem,
             toggleItem,
             new ToolStripSeparator(),
@@ -97,26 +123,65 @@ public sealed class TrayService : ITrayService
             microphoneItem,
             new ToolStripSeparator(),
             settingsItem,
-            openItem,
             exitItem,
         ]);
-        notifyIcon.Icon = SystemIcons.Application;
+        openItem.Font = new Font(menu.Font, FontStyle.Bold);
+        menu.Opened += (_, _) => TrayMenuRenderer.ApplyWindowAppearance(menu.Handle, appearance.IsDark);
+        sourceItem.DropDownOpened += (_, _) => ApplyDropDownAppearance(sourceItem);
+        microphoneItem.DropDownOpened += (_, _) => ApplyDropDownAppearance(microphoneItem);
+
+        notifyIcon.ContextMenuStrip = menu;
         notifyIcon.Text = "MusicMic";
-        notifyIcon.DoubleClick += (_, _) => open();
+        notifyIcon.MouseClick += (_, args) =>
+        {
+            if (args.Button == MouseButtons.Left)
+            {
+                open();
+            }
+        };
+        RefreshIcon();
         notifyIcon.Visible = true;
     }
 
     public void Update(AudioEngineSnapshot snapshot)
     {
         TrayMenuState state = TrayMenuState.From(snapshot);
-        statusItem.Text = state.StatusText == "Injecting" ? "● Injecting" : $"○ {state.StatusText}";
+        bool wasInjecting = isInjecting;
+        isInjecting = snapshot.Injection.IsInjectionActive;
+
+        statusItem.Text = isInjecting ? "Injecting" : state.StatusText;
         toggleItem.Text = state.StartStopText;
         toggleItem.Enabled = state.CanStartStop;
         sourceItem.Enabled = state.CanChangeSelection && state.Sources.Count > 0;
         microphoneItem.Enabled = state.CanChangeSelection && state.Microphones.Count > 0;
         RebuildChoices(sourceItem, state.Sources, choice => selectSource?.Invoke(choice.Id));
         RebuildChoices(microphoneItem, state.Microphones, choice => selectMicrophone?.Invoke(choice.Id));
-        notifyIcon.Text = state.StatusText == "Injecting" ? "MusicMic — Injecting" : $"MusicMic — {state.StatusText}";
+        notifyIcon.Text = isInjecting ? "MusicMic — Injecting" : $"MusicMic — {state.StatusText}";
+
+        if (wasInjecting != isInjecting)
+        {
+            RefreshIcon();
+        }
+    }
+
+    public void UpdateAppearance(TrayMenuAppearance value)
+    {
+        ArgumentNullException.ThrowIfNull(value);
+        appearance = value;
+        if (notifyIcon.ContextMenuStrip is not null)
+        {
+            notifyIcon.ContextMenuStrip.Renderer = new TrayMenuRenderer(appearance);
+        }
+
+        RefreshIcon();
+    }
+
+    public void ShowRunningInBackgroundNotice()
+    {
+        notifyIcon.BalloonTipTitle = "MusicMic is running";
+        notifyIcon.BalloonTipText = "Select the MusicMic icon in the notification area to choose an app and microphone.";
+        notifyIcon.BalloonTipIcon = ToolTipIcon.None;
+        notifyIcon.ShowBalloonTip(5000);
     }
 
     public void Dispose()
@@ -124,6 +189,42 @@ public sealed class TrayService : ITrayService
         notifyIcon.Visible = false;
         notifyIcon.ContextMenuStrip?.Dispose();
         notifyIcon.Dispose();
+        currentIcon?.Dispose();
+        currentIcon = null;
+    }
+
+    private void RefreshIcon()
+    {
+        Icon icon = TrayIconFactory.Create(isInjecting, appearance.Accent, appearance.IsDark);
+        Icon? previous = currentIcon;
+        currentIcon = icon;
+        notifyIcon.Icon = icon;
+        previous?.Dispose();
+    }
+
+    private void ApplyDropDownAppearance(ToolStripMenuItem parent)
+    {
+        parent.DropDown.Renderer = new TrayMenuRenderer(appearance);
+        TrayMenuRenderer.ApplyWindowAppearance(parent.DropDown.Handle, appearance.IsDark);
+    }
+
+    private static Font? TryCreateMenuFont()
+    {
+        foreach (string family in new[] { "Segoe UI Variable Text", "Segoe UI" })
+        {
+            try
+            {
+                // The family instance is kept alive by the font for the lifetime of the menu.
+                var candidate = new FontFamily(family);
+                return new Font(candidate, 9f, FontStyle.Regular, GraphicsUnit.Point);
+            }
+            catch (ArgumentException)
+            {
+                // The family is unavailable on this host; try the next one.
+            }
+        }
+
+        return null;
     }
 
     private static void RebuildChoices(

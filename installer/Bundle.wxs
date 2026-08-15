@@ -1,10 +1,15 @@
 <Wix xmlns="http://wixtoolset.org/schemas/v4/wxs"
      xmlns:bal="http://wixtoolset.org/schemas/v4/wxs/bal"
      xmlns:util="http://wixtoolset.org/schemas/v4/wxs/util">
-  <Bundle Name="MusicMic Setup"
+  <!-- The bundle owns the Programs and Features entry the user sees. Installing a newer bundle
+       removes the previously installed one through this UpgradeCode, and the MSI inside removes
+       any MusicMic that was installed without the bootstrapper. -->
+  <Bundle Name="MusicMic"
           Manufacturer="MusicMic"
           Version="$(var.ProductVersion)"
-          UpgradeCode="C2622A4A-9337-4720-8DC1-3D4B7AE03BEF">
+          UpgradeCode="C2622A4A-9337-4720-8DC1-3D4B7AE03BEF"
+          IconSourceFile="..\src\MusicMic.App\Assets\MusicMic.ico"
+          DisableModify="yes">
     <WixVariable Id="WixStdBALicenseRtf" Value="VBCABLE-Notice.rtf" />
     <util:RegistrySearch Id="VbCableService"
                          Root="HKLM"
@@ -57,7 +62,7 @@
         <Payload SourceFile="$(var.VbCablePayloadDirectory)\vbMmeCable_win7.inf" />
         <Payload SourceFile="$(var.VbCablePayloadDirectory)\vbMmeCable_xp.inf" />
       </ExePackage>
-      <MsiPackage SourceFile="$(var.MsiPath)" />
+      <MsiPackage SourceFile="$(var.MsiPath)" Visible="no" />
     </Chain>
   </Bundle>
 </Wix>

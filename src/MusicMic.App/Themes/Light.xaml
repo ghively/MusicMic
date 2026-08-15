@@ -1,26 +1,64 @@
 <ResourceDictionary xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation" xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml" xmlns:sys="clr-namespace:System;assembly=System.Runtime">
+    <!-- Windows 11 (WinUI 3) light theme resources. Names mirror the platform tokens so the
+         flyout reads as shell surface rather than an app-specific palette. -->
     <sys:Boolean x:Key="IsDarkTheme">False</sys:Boolean>
-    <Color x:Key="FocusColor">#0067C0</Color>
-    <SolidColorBrush x:Key="WindowBackgroundBrush" Color="#E8F3F3F3" />
+    <Color x:Key="FocusColor">#005FB8</Color>
+
+    <!-- Surfaces -->
+    <SolidColorBrush x:Key="WindowBackgroundBrush" Color="#F3F3F3" />
     <SolidColorBrush x:Key="BackdropFallbackBrush" Color="#F3F3F3" />
-    <SolidColorBrush x:Key="LayerFillBrush" Color="#A8FFFFFF" />
+    <SolidColorBrush x:Key="LayerFillBrush" Color="#80FFFFFF" />
+    <SolidColorBrush x:Key="CardFillBrush" Color="#B3FFFFFF" />
+    <SolidColorBrush x:Key="CardStrokeBrush" Color="#0F000000" />
+    <SolidColorBrush x:Key="PopupFillBrush" Color="#F9F9F9" />
+    <SolidColorBrush x:Key="PopupStrokeBrush" Color="#0F000000" />
+    <SolidColorBrush x:Key="ControlSolidFillBrush" Color="#FFFFFF" />
+
+    <!-- Control fills -->
     <SolidColorBrush x:Key="ControlFillBrush" Color="#B3FFFFFF" />
-    <SolidColorBrush x:Key="ControlFillHoverBrush" Color="#D5FFFFFF" />
-    <SolidColorBrush x:Key="ControlFillPressedBrush" Color="#92FFFFFF" />
-    <SolidColorBrush x:Key="PopupFillBrush" Color="#FAFAFA" />
-    <SolidColorBrush x:Key="SliderTrackBrush" Color="#5C000000" />
-    <SolidColorBrush x:Key="SliderThumbBorderBrush" Color="#F5FFFFFF" />
-    <SolidColorBrush x:Key="DividerBrush" Color="#26000000" />
-    <SolidColorBrush x:Key="OuterBorderBrush" Color="#24000000" />
-    <SolidColorBrush x:Key="FocusStrokeBrush" Color="#A80067C0" />
-    <SolidColorBrush x:Key="PrimaryTextBrush" Color="#1A1A1A" />
-    <SolidColorBrush x:Key="SecondaryTextBrush" Color="#A6000000" />
+    <SolidColorBrush x:Key="ControlFillHoverBrush" Color="#80F9F9F9" />
+    <SolidColorBrush x:Key="ControlFillPressedBrush" Color="#4DF9F9F9" />
+    <SolidColorBrush x:Key="ControlFillDisabledBrush" Color="#4DF9F9F9" />
+    <SolidColorBrush x:Key="SubtleFillHoverBrush" Color="#09000000" />
+    <SolidColorBrush x:Key="SubtleFillPressedBrush" Color="#06000000" />
+
+    <!-- Strokes -->
+    <SolidColorBrush x:Key="ControlStrokeBrush" Color="#0F000000" />
+    <SolidColorBrush x:Key="ControlStrongStrokeBrush" Color="#9C000000" />
+    <SolidColorBrush x:Key="DividerBrush" Color="#0F000000" />
+    <SolidColorBrush x:Key="OuterBorderBrush" Color="#0F000000" />
+    <SolidColorBrush x:Key="FocusStrokeBrush" Color="#E4000000" />
+    <SolidColorBrush x:Key="SliderTrackBrush" Color="#72000000" />
+    <SolidColorBrush x:Key="SliderThumbBorderBrush" Color="#29000000" />
+    <!-- Control elevation border: a hairline that is darker along the bottom edge. -->
+    <LinearGradientBrush x:Key="ControlElevationBorderBrush" StartPoint="0,0" EndPoint="0,1">
+        <GradientStop Offset="0.0" Color="#0F000000" />
+        <GradientStop Offset="0.9" Color="#0F000000" />
+        <GradientStop Offset="1.0" Color="#29000000" />
+    </LinearGradientBrush>
+    <LinearGradientBrush x:Key="AccentElevationBorderBrush" StartPoint="0,0" EndPoint="0,1">
+        <GradientStop Offset="0.0" Color="#14FFFFFF" />
+        <GradientStop Offset="0.9" Color="#14FFFFFF" />
+        <GradientStop Offset="1.0" Color="#66000000" />
+    </LinearGradientBrush>
+
+    <!-- Text -->
+    <SolidColorBrush x:Key="PrimaryTextBrush" Color="#E4000000" />
+    <SolidColorBrush x:Key="SecondaryTextBrush" Color="#9E000000" />
+    <SolidColorBrush x:Key="TertiaryTextBrush" Color="#72000000" />
     <SolidColorBrush x:Key="DisabledTextBrush" Color="#5C000000" />
-    <SolidColorBrush x:Key="AccentBrush" Color="#0067C0" />
-    <SolidColorBrush x:Key="AccentHoverBrush" Color="#1975C8" />
-    <SolidColorBrush x:Key="AccentPressedBrush" Color="#00579F" />
-    <SolidColorBrush x:Key="AccentSubtleBrush" Color="#220067C0" />
+
+    <!-- Accent (replaced at runtime with the user's Windows accent colour) -->
+    <SolidColorBrush x:Key="AccentBrush" Color="#005FB8" />
+    <SolidColorBrush x:Key="AccentHoverBrush" Color="#E6005FB8" />
+    <SolidColorBrush x:Key="AccentPressedBrush" Color="#CC005FB8" />
+    <SolidColorBrush x:Key="AccentDisabledBrush" Color="#37000000" />
+    <SolidColorBrush x:Key="AccentSubtleBrush" Color="#1A005FB8" />
     <SolidColorBrush x:Key="AccentForegroundBrush" Color="#FFFFFF" />
-    <SolidColorBrush x:Key="SuccessBrush" Color="#107C10" />
+    <SolidColorBrush x:Key="AccentTextBrush" Color="#003E92" />
+
+    <!-- System states -->
+    <SolidColorBrush x:Key="SuccessBrush" Color="#0F7B0F" />
     <SolidColorBrush x:Key="ErrorBrush" Color="#C42B1C" />
+    <SolidColorBrush x:Key="CautionBrush" Color="#9D5D00" />
 </ResourceDictionary>
