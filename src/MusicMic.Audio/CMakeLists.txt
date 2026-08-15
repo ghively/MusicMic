@@ -33,6 +33,7 @@ if(BUILD_TESTING)
         tests/wasapi_streams_tests.cpp
         tests/engine_state_tests.cpp
         tests/abi_tests.cpp
+        tests/abi_boundary_tests.cpp
         tests/core_audio_discovery_tests.cpp
         tests/test_main.cpp
     )

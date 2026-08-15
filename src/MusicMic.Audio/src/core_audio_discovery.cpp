@@ -147,8 +147,7 @@ private:
 
 void EnumerateSessionsOnEndpoint(
     IMMDevice* endpoint,
-    std::vector<SourceIdentity>& sources,
-    std::unordered_map<std::wstring, std::size_t>& source_by_path) {
+    std::vector<SourceIdentity>& sources) {
     ComPtr<IAudioSessionManager2> manager;
     if (FAILED(endpoint->Activate(
             __uuidof(IAudioSessionManager2),
@@ -187,14 +186,10 @@ void EnumerateSessionsOnEndpoint(
             continue;
         }
         std::wstring normalized_path = NormalizeExecutableIdentity(executable_path);
-        if (source_by_path.contains(normalized_path)) {
-            continue;
-        }
         std::wstring display_name = BuildApplicationDisplayName(
             executable_path,
             SessionDisplayName(session.Get()));
         const bool is_spotify = _wcsicmp(display_name.c_str(), L"Spotify") == 0;
-        source_by_path.emplace(normalized_path, sources.size());
         sources.push_back(SourceIdentity{
             StableId(normalized_path),
             std::move(executable_path),
@@ -280,6 +275,39 @@ std::wstring BuildApplicationDisplayName(
     return filename.empty() ? L"Audio application" : filename;
 }
 
+std::vector<SourceIdentity> ResolveUnambiguousApplicationSources(
+    std::vector<SourceIdentity> candidates) {
+    struct CandidateGroup final {
+        std::size_t first_index{};
+        std::uint32_t process_id{};
+        bool ambiguous{};
+    };
+
+    std::unordered_map<std::wstring, CandidateGroup> groups;
+    groups.reserve(candidates.size());
+    for (std::size_t index = 0; index < candidates.size(); ++index) {
+        const std::wstring identity = NormalizeExecutableIdentity(candidates[index].executable_path);
+        const auto [iterator, inserted] = groups.try_emplace(
+            identity,
+            CandidateGroup{index, candidates[index].process_id, false});
+        if (!inserted && iterator->second.process_id != candidates[index].process_id) {
+            // Process-loopback is rooted at one PID. Silently choosing among unrelated
+            // active processes with the same executable would overstate what is captured.
+            iterator->second.ambiguous = true;
+        }
+    }
+
+    std::vector<SourceIdentity> resolved;
+    resolved.reserve(groups.size());
+    for (const auto& [identity, group] : groups) {
+        (void)identity;
+        if (!group.ambiguous) {
+            resolved.push_back(std::move(candidates[group.first_index]));
+        }
+    }
+    return resolved;
+}
+
 bool CoreAudioDiscovery::Refresh(std::wstring& error_message) {
     sources_.clear();
     microphones_.clear();
@@ -316,7 +344,7 @@ bool CoreAudioDiscovery::Refresh(std::wstring& error_message) {
         error_message = L"Could not read active playback endpoints: " + HResultMessage(result);
         return false;
     }
-    std::unordered_map<std::wstring, std::size_t> source_by_path;
+    std::vector<SourceIdentity> source_candidates;
     for (UINT index = 0; index < render_count; ++index) {
         ComPtr<IMMDevice> endpoint;
         if (FAILED(render_endpoints->Item(index, &endpoint))) {
@@ -326,8 +354,9 @@ bool CoreAudioDiscovery::Refresh(std::wstring& error_message) {
         if (vb_cable_endpoint_id_.empty() && IsVbCableInputName(friendly_name)) {
             vb_cable_endpoint_id_ = ReadEndpointId(endpoint.Get());
         }
-        EnumerateSessionsOnEndpoint(endpoint.Get(), sources_, source_by_path);
+        EnumerateSessionsOnEndpoint(endpoint.Get(), source_candidates);
     }
+    sources_ = ResolveUnambiguousApplicationSources(std::move(source_candidates));
 
     std::wstring default_capture_id;
     ComPtr<IMMDevice> default_capture;

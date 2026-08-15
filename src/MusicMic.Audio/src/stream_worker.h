@@ -22,6 +22,10 @@ struct WorkerRecoveryDecision final {
     bool microphone_healthy,
     bool output_healthy) noexcept;
 
+[[nodiscard]] bool EffectiveStreamHealth(
+    bool selected_identity_resolved,
+    bool stream_healthy) noexcept;
+
 [[nodiscard]] float PeakMagnitude(std::span<const float> samples) noexcept;
 
 [[nodiscard]] std::chrono::milliseconds RetryDelay(std::size_t attempt) noexcept;

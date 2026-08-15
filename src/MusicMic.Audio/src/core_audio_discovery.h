@@ -29,6 +29,8 @@ struct MicrophoneIdentity final {
 [[nodiscard]] std::wstring BuildApplicationDisplayName(
     std::wstring_view executable_path,
     std::wstring_view session_display_name);
+[[nodiscard]] std::vector<SourceIdentity> ResolveUnambiguousApplicationSources(
+    std::vector<SourceIdentity> candidates);
 
 class CoreAudioDiscovery final {
 public:

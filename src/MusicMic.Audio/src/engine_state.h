@@ -27,6 +27,7 @@ enum class EngineEvent {
     StartRequested,
     StopRequested,
     Failed,
+    RecoverySucceeded,
 };
 
 class EngineStateMachine final {
@@ -40,6 +41,10 @@ public:
     [[nodiscard]] bool SourceAvailable() const noexcept { return source_available_; }
     [[nodiscard]] bool MicrophoneAvailable() const noexcept { return microphone_available_; }
     [[nodiscard]] bool OutputAvailable() const noexcept { return output_available_; }
+    [[nodiscard]] bool SelectionChangeAllowed() const noexcept { return !injection_requested_; }
+    [[nodiscard]] bool ShouldSelectDefaultMicrophone() const noexcept {
+        return !microphone_selection_decided_;
+    }
 
 private:
     void Recompute() noexcept;
@@ -50,6 +55,7 @@ private:
     bool injection_requested_{false};
     bool source_selected_{false};
     bool microphone_selected_{false};
+    bool microphone_selection_decided_{false};
     bool source_available_{false};
     bool microphone_available_{false};
     bool output_available_{false};

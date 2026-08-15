@@ -12,9 +12,11 @@ void EngineStateMachine::Apply(EngineEvent event) noexcept {
         source_available_ = true;
         break;
     case EngineEvent::SourceCleared:
+        if (injection_requested_) {
+            break;
+        }
         source_selected_ = false;
         source_available_ = false;
-        injection_requested_ = false;
         break;
     case EngineEvent::SourceLost:
         source_available_ = false;
@@ -23,13 +25,17 @@ void EngineStateMachine::Apply(EngineEvent event) noexcept {
         source_available_ = source_selected_;
         break;
     case EngineEvent::MicrophoneSelected:
+        microphone_selection_decided_ = true;
         microphone_selected_ = true;
         microphone_available_ = true;
         break;
     case EngineEvent::MicrophoneCleared:
+        if (injection_requested_) {
+            break;
+        }
+        microphone_selection_decided_ = true;
         microphone_selected_ = false;
         microphone_available_ = false;
-        injection_requested_ = false;
         break;
     case EngineEvent::MicrophoneLost:
         microphone_available_ = false;
@@ -54,7 +60,9 @@ void EngineStateMachine::Apply(EngineEvent event) noexcept {
         break;
     case EngineEvent::Failed:
         failed_ = true;
-        injection_requested_ = false;
+        break;
+    case EngineEvent::RecoverySucceeded:
+        failed_ = false;
         break;
     }
 

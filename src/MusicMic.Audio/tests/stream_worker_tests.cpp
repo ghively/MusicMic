@@ -5,6 +5,7 @@
 #include <chrono>
 
 using musicmic::DecideWorkerRecovery;
+using musicmic::EffectiveStreamHealth;
 using musicmic::PeakMagnitude;
 using musicmic::RetryDelay;
 using musicmic::StereoFrameQueue;
@@ -74,4 +75,10 @@ MM_TEST(Stream_retry_delay_uses_the_required_bounded_recovery_schedule) {
     for (std::size_t attempt = 0; attempt < expected.size(); ++attempt) {
         MM_REQUIRE(RetryDelay(attempt) == expected[attempt]);
     }
+}
+
+MM_TEST(Stream_health_never_overrides_an_ambiguous_or_missing_discovery_identity) {
+    MM_REQUIRE(EffectiveStreamHealth(true, true));
+    MM_REQUIRE(!EffectiveStreamHealth(false, true));
+    MM_REQUIRE(!EffectiveStreamHealth(true, false));
 }

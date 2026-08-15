@@ -398,6 +398,14 @@ bool ShouldRestartSource(
     return injection_requested && !source_healthy && discovered_process_id != 0;
 }
 
+bool StreamStartupSucceeded(
+    bool running,
+    bool source_healthy,
+    bool microphone_healthy,
+    bool output_healthy) noexcept {
+    return running && source_healthy && microphone_healthy && output_healthy;
+}
+
 std::wstring FormatHResult(HRESULT result) {
     wchar_t* raw_message = nullptr;
     const DWORD message_length = FormatMessageW(
@@ -476,6 +484,14 @@ public:
             error_message = Snapshot().error_message;
             return MM_RESULT_AUDIO_FAILURE;
         }
+        source_stop_event_.Reset(CreateEventW(nullptr, TRUE, FALSE, nullptr));
+        if (!source_stop_event_) {
+            const HRESULT result = HRESULT_FROM_WIN32(GetLastError());
+            RecordFailure(StreamFailure::Internal, result);
+            error_message = Snapshot().error_message;
+            stop_event_.Reset();
+            return MM_RESULT_AUDIO_FAILURE;
+        }
 
         std::promise<HRESULT> source_started;
         std::promise<HRESULT> microphone_started;
@@ -484,6 +500,7 @@ public:
         std::future<HRESULT> microphone_result = microphone_started.get_future();
         std::future<HRESULT> output_result = output_started.get_future();
 
+        running_.store(true);
         try {
             source_thread_ = std::thread(
                 &Impl::RunCapture,
@@ -524,7 +541,88 @@ public:
             return StreamFailureResult(failure);
         }
 
-        running_.store(true);
+        if (!StreamStartupSucceeded(
+                running_.load(),
+                source_healthy_.load(),
+                microphone_healthy_.load(),
+                output_healthy_.load())) {
+            const WasapiStreamSnapshot snapshot = Snapshot();
+            const StreamFailure failure = FAILED(snapshot.failure_result)
+                ? snapshot.failure
+                : StreamFailure::Output;
+            const HRESULT failure_result = FAILED(snapshot.failure_result)
+                ? snapshot.failure_result
+                : E_UNEXPECTED;
+            RecordFailure(failure, failure_result);
+            error_message = Snapshot().error_message;
+            StopThreads();
+            return StreamFailureResult(failure);
+        }
+        error_message.clear();
+        return MM_RESULT_OK;
+    }
+
+    [[nodiscard]] MM_Result RestartSource(
+        std::uint32_t process_id,
+        std::wstring& error_message) {
+        if (process_id == 0) {
+            error_message = L"A current source process is required for recovery.";
+            return MM_RESULT_INVALID_ARGUMENT;
+        }
+        if (!running_.load() || !output_healthy_.load() || StopRequested()) {
+            error_message = L"CABLE Input is no longer rendering; source recovery was not attempted.";
+            return MM_RESULT_OUTPUT_UNAVAILABLE;
+        }
+        if (source_healthy_.load() && process_id_ == process_id) {
+            error_message.clear();
+            return MM_RESULT_OK;
+        }
+
+        StopSource();
+        if (!source_stop_event_) {
+            error_message = L"The source recovery signal is unavailable.";
+            return MM_RESULT_INTERNAL_ERROR;
+        }
+        ResetEvent(source_stop_event_.Get());
+        process_id_ = process_id;
+        source_peak_.store(0.0F);
+        source_healthy_.store(false);
+        {
+            std::scoped_lock lock(source_queue_mutex_);
+            source_queue_.Clear();
+        }
+
+        std::promise<HRESULT> source_started;
+        std::future<HRESULT> source_result = source_started.get_future();
+        try {
+            source_thread_ = std::thread(
+                &Impl::RunCapture,
+                this,
+                StreamFailure::Source,
+                std::move(source_started));
+        } catch (...) {
+            RecordFailure(StreamFailure::Internal, E_OUTOFMEMORY);
+            error_message = Snapshot().error_message;
+            return MM_RESULT_INTERNAL_ERROR;
+        }
+
+        const HRESULT result = source_result.get();
+        if (!running_.load() || !output_healthy_.load()) {
+            error_message = L"CABLE Input stopped while the source was reconnecting.";
+            if (source_thread_.joinable()) {
+                source_thread_.join();
+            }
+            return MM_RESULT_OUTPUT_UNAVAILABLE;
+        }
+        if (FAILED(result)) {
+            RecordFailure(StreamFailure::Source, result);
+            error_message = Snapshot().error_message;
+            if (source_thread_.joinable()) {
+                source_thread_.join();
+            }
+            return MM_RESULT_SOURCE_UNAVAILABLE;
+        }
+        ClearFailureIfHealthy();
         error_message.clear();
         return MM_RESULT_OK;
     }
@@ -540,6 +638,22 @@ public:
         std::scoped_lock lock(source_queue_mutex_, microphone_queue_mutex_);
         source_queue_.Clear();
         microphone_queue_.Clear();
+    }
+
+    void StopSource() noexcept {
+        if (source_stop_event_) {
+            SetEvent(source_stop_event_.Get());
+        }
+        if (source_thread_.joinable()) {
+            source_thread_.join();
+        }
+        source_healthy_.store(false);
+        source_peak_.store(0.0F);
+        try {
+            std::scoped_lock lock(source_queue_mutex_);
+            source_queue_.Clear();
+        } catch (...) {
+        }
     }
 
     void SetGains(float source_gain, float microphone_gain) noexcept {
@@ -570,6 +684,9 @@ private:
         if (stop_event_) {
             SetEvent(stop_event_.Get());
         }
+        if (source_stop_event_) {
+            SetEvent(source_stop_event_.Get());
+        }
         if (source_thread_.joinable()) {
             source_thread_.join();
         }
@@ -580,6 +697,7 @@ private:
             output_thread_.join();
         }
         stop_event_.Reset();
+        source_stop_event_.Reset();
     }
 
     void RunCapture(StreamFailure failure, std::promise<HRESULT> startup) noexcept {
@@ -600,6 +718,9 @@ private:
                     ? CreateSourceSession(process_id_, session)
                     : CreateMicrophoneSession(microphone_endpoint_id_, session);
                 if (startup_pending) {
+                    if (SUCCEEDED(result)) {
+                        SetHealthy(failure, true);
+                    }
                     startup.set_value(result);
                     startup_pending = false;
                     if (FAILED(result)) {
@@ -619,7 +740,8 @@ private:
                 retry_attempt = 0;
                 result = CaptureUntilStopped(failure, session);
                 session.audio_client->Stop();
-                if (StopRequested()) {
+                if (StopRequested() ||
+                    (failure == StreamFailure::Source && SourceStopRequested())) {
                     break;
                 }
                 SetHealthy(failure, false);
@@ -650,6 +772,12 @@ private:
             }
             RecordFailure(failure, E_OUTOFMEMORY);
         }
+        if (startup_pending) {
+            try {
+                startup.set_value(HRESULT_FROM_WIN32(ERROR_CANCELLED));
+            } catch (...) {
+            }
+        }
         SetHealthy(failure, false);
     }
 
@@ -657,11 +785,16 @@ private:
         StreamFailure failure,
         CaptureSession& session) {
         std::vector<float> silence;
-        HANDLE wait_handles[3]{
-            stop_event_.Get(),
-            session.sample_event.Get(),
-            session.process_handle.Get()};
-        const DWORD handle_count = failure == StreamFailure::Source ? 3U : 2U;
+        HANDLE wait_handles[4]{};
+        DWORD handle_count = 0;
+        wait_handles[handle_count++] = stop_event_.Get();
+        if (failure == StreamFailure::Source) {
+            wait_handles[handle_count++] = source_stop_event_.Get();
+        }
+        wait_handles[handle_count++] = session.sample_event.Get();
+        if (failure == StreamFailure::Source) {
+            wait_handles[handle_count++] = session.process_handle.Get();
+        }
         while (!StopRequested()) {
             const DWORD wait_result = WaitForMultipleObjects(
                 handle_count,
@@ -671,10 +804,15 @@ private:
             if (wait_result == WAIT_OBJECT_0) {
                 return S_OK;
             }
-            if (wait_result == WAIT_OBJECT_0 + 2U && failure == StreamFailure::Source) {
+            if (failure == StreamFailure::Source && wait_result == WAIT_OBJECT_0 + 1U) {
+                return S_OK;
+            }
+            const DWORD sample_index = failure == StreamFailure::Source ? 2U : 1U;
+            const DWORD process_index = 3U;
+            if (failure == StreamFailure::Source && wait_result == WAIT_OBJECT_0 + process_index) {
                 return HRESULT_FROM_WIN32(ERROR_PROCESS_ABORTED);
             }
-            if (wait_result != WAIT_OBJECT_0 + 1U) {
+            if (wait_result != WAIT_OBJECT_0 + sample_index) {
                 return HRESULT_FROM_WIN32(GetLastError());
             }
             const HRESULT result = DrainCapture(failure, session.capture_client.Get(), silence);
@@ -744,10 +882,13 @@ private:
                 MmcssRegistration mmcss(L"Pro Audio");
                 RenderSession session;
                 result = CreateRenderSession(output_endpoint_id_, session);
+                if (SUCCEEDED(result)) {
+                    output_healthy_.store(true);
+                    ClearFailureIfHealthy();
+                }
                 startup.set_value(result);
                 startup_pending = false;
                 if (SUCCEEDED(result)) {
-                    output_healthy_.store(true);
                     result = RenderUntilStopped(session);
                     session.audio_client->Stop();
                 }
@@ -836,6 +977,11 @@ private:
         return stop_event_ && WaitForSingleObject(stop_event_.Get(), 0) == WAIT_OBJECT_0;
     }
 
+    [[nodiscard]] bool SourceStopRequested() const noexcept {
+        return source_stop_event_ &&
+            WaitForSingleObject(source_stop_event_.Get(), 0) == WAIT_OBJECT_0;
+    }
+
     [[nodiscard]] bool WaitForRetry(std::size_t attempt) const noexcept {
         return !stop_event_ ||
             WaitForSingleObject(
@@ -854,6 +1000,23 @@ private:
             if (!healthy) {
                 microphone_peak_.store(0.0F);
             }
+        }
+        if (healthy) {
+            ClearFailureIfHealthy();
+        }
+    }
+
+    void ClearFailureIfHealthy() noexcept {
+        if (!source_healthy_.load() || !microphone_healthy_.load() ||
+            !output_healthy_.load()) {
+            return;
+        }
+        failure_.store(static_cast<int>(StreamFailure::Internal));
+        failure_result_.store(S_OK);
+        try {
+            std::scoped_lock lock(error_mutex_);
+            error_message_.clear();
+        } catch (...) {
         }
     }
 
@@ -875,6 +1038,7 @@ private:
     std::wstring output_endpoint_id_;
 
     UniqueHandle stop_event_;
+    UniqueHandle source_stop_event_;
     std::thread source_thread_;
     std::thread microphone_thread_;
     std::thread output_thread_;
@@ -919,6 +1083,16 @@ MM_Result WasapiStreams::Start(
         source_gain,
         microphone_gain,
         error_message);
+}
+
+MM_Result WasapiStreams::RestartSource(
+    std::uint32_t process_id,
+    std::wstring& error_message) {
+    return impl_->RestartSource(process_id, error_message);
+}
+
+void WasapiStreams::StopSource() noexcept {
+    impl_->StopSource();
 }
 
 void WasapiStreams::Stop() noexcept {

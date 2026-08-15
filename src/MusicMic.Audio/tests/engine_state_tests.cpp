@@ -94,3 +94,48 @@ MM_TEST(Recovered_source_restores_injecting_state_when_injection_remains_request
 
     MM_REQUIRE(machine.State() == EngineState::Injecting);
 }
+
+MM_TEST(Selection_changes_are_rejected_while_injection_is_requested) {
+    EngineStateMachine machine;
+    machine.Apply(EngineEvent::Initialized);
+    machine.Apply(EngineEvent::SourceSelected);
+    machine.Apply(EngineEvent::MicrophoneSelected);
+    machine.Apply(EngineEvent::OutputAvailable);
+    machine.Apply(EngineEvent::StartRequested);
+
+    MM_REQUIRE(!machine.SelectionChangeAllowed());
+    machine.Apply(EngineEvent::SourceCleared);
+    machine.Apply(EngineEvent::MicrophoneCleared);
+
+    MM_REQUIRE(machine.State() == EngineState::Injecting);
+    MM_REQUIRE(machine.SourceSelected());
+    MM_REQUIRE(machine.MicrophoneSelected());
+}
+
+MM_TEST(Explicit_microphone_clear_is_not_mistaken_for_uninitialized_default_selection) {
+    EngineStateMachine machine;
+    machine.Apply(EngineEvent::Initialized);
+    MM_REQUIRE(machine.ShouldSelectDefaultMicrophone());
+
+    machine.Apply(EngineEvent::MicrophoneCleared);
+
+    MM_REQUIRE(!machine.ShouldSelectDefaultMicrophone());
+    MM_REQUIRE(!machine.MicrophoneSelected());
+}
+
+MM_TEST(Successful_refresh_clears_a_transient_error_without_losing_injection_intent) {
+    EngineStateMachine machine;
+    machine.Apply(EngineEvent::Initialized);
+    machine.Apply(EngineEvent::SourceSelected);
+    machine.Apply(EngineEvent::MicrophoneSelected);
+    machine.Apply(EngineEvent::OutputAvailable);
+    machine.Apply(EngineEvent::StartRequested);
+
+    machine.Apply(EngineEvent::Failed);
+    MM_REQUIRE(machine.State() == EngineState::Error);
+    MM_REQUIRE(machine.InjectionRequested());
+
+    machine.Apply(EngineEvent::RecoverySucceeded);
+    MM_REQUIRE(machine.State() == EngineState::Injecting);
+    MM_REQUIRE(machine.InjectionRequested());
+}

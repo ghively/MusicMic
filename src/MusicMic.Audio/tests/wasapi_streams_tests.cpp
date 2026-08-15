@@ -8,6 +8,7 @@ using musicmic::BuildBusWaveFormat;
 using musicmic::StreamFailure;
 using musicmic::StreamFailureResult;
 using musicmic::ShouldRestartSource;
+using musicmic::StreamStartupSucceeded;
 
 MM_TEST(WASAPI_bus_format_is_48khz_float_stereo) {
     const WAVEFORMATEXTENSIBLE format = BuildBusWaveFormat();
@@ -37,4 +38,10 @@ MM_TEST(WASAPI_only_restarts_source_after_stable_discovery_finds_a_current_proce
     MM_REQUIRE(!ShouldRestartSource(false, false, 2400));
     MM_REQUIRE(!ShouldRestartSource(true, true, 2400));
     MM_REQUIRE(!ShouldRestartSource(true, false, 0));
+}
+
+MM_TEST(WASAPI_startup_does_not_claim_running_after_the_render_worker_has_already_exited) {
+    MM_REQUIRE(StreamStartupSucceeded(true, true, true, true));
+    MM_REQUIRE(!StreamStartupSucceeded(false, true, true, true));
+    MM_REQUIRE(!StreamStartupSucceeded(true, true, true, false));
 }

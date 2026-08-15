@@ -1,6 +1,8 @@
 #include "core_audio_discovery.h"
 #include "test_support.h"
 
+#include <vector>
+
 MM_TEST(Discovery_only_accepts_the_canonical_VB_CABLE_render_name) {
     MM_REQUIRE(musicmic::IsVbCableInputName(L"CABLE Input"));
     MM_REQUIRE(musicmic::IsVbCableInputName(L"CABLE Input (VB-Audio Virtual Cable)"));
@@ -30,4 +32,20 @@ MM_TEST(Discovery_recognizes_Spotify_from_executable_without_an_API) {
     MM_REQUIRE(
         musicmic::BuildApplicationDisplayName(L"C:\\Apps\\firefox.exe", L"@resource.dll,-1") ==
         L"firefox");
+}
+
+MM_TEST(Discovery_does_not_offer_an_arbitrary_process_when_one_executable_has_multiple_active_processes) {
+    std::vector<musicmic::SourceIdentity> candidates{
+        {L"exe:browser", L"C:\\Apps\\browser.exe", L"Browser", 101, false},
+        {L"exe:browser", L"C:\\Apps\\browser.exe", L"Browser", 202, false},
+        {L"exe:player", L"C:\\Apps\\player.exe", L"Player", 303, false},
+        // Duplicate sessions from the same process are safe to collapse.
+        {L"exe:player", L"C:\\Apps\\player.exe", L"Player", 303, false},
+    };
+
+    const auto sources = musicmic::ResolveUnambiguousApplicationSources(std::move(candidates));
+
+    MM_REQUIRE(sources.size() == 1);
+    MM_REQUIRE(sources.front().display_name == L"Player");
+    MM_REQUIRE(sources.front().process_id == 303);
 }

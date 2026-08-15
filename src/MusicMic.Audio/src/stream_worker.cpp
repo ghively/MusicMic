@@ -20,6 +20,12 @@ WorkerRecoveryDecision DecideWorkerRecovery(
         false};
 }
 
+bool EffectiveStreamHealth(
+    bool selected_identity_resolved,
+    bool stream_healthy) noexcept {
+    return selected_identity_resolved && stream_healthy;
+}
+
 float PeakMagnitude(std::span<const float> samples) noexcept {
     float peak = 0.0F;
     for (const float sample : samples) {

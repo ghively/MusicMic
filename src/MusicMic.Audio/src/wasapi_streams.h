@@ -24,6 +24,11 @@ enum class StreamFailure {
     bool injection_requested,
     bool source_healthy,
     std::uint32_t discovered_process_id) noexcept;
+[[nodiscard]] bool StreamStartupSucceeded(
+    bool running,
+    bool source_healthy,
+    bool microphone_healthy,
+    bool output_healthy) noexcept;
 [[nodiscard]] std::wstring FormatHResult(HRESULT result);
 
 struct WasapiStreamSnapshot final {
@@ -54,6 +59,10 @@ public:
         float source_gain,
         float microphone_gain,
         std::wstring& error_message);
+    [[nodiscard]] MM_Result RestartSource(
+        std::uint32_t process_id,
+        std::wstring& error_message);
+    void StopSource() noexcept;
     void Stop() noexcept;
     void SetGains(float source_gain, float microphone_gain) noexcept;
 
