@@ -6,6 +6,13 @@ set(CMAKE_CXX_STANDARD 20)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 set(CMAKE_CXX_EXTENSIONS OFF)
 
+if(MSVC)
+    # Core Audio callbacks and the C ABI use C++ exception-aware standard
+    # library code. Enable correct unwind semantics and keep native warnings
+    # release-blocking, matching the direct MSVC verification configuration.
+    add_compile_options(/EHsc /W4 /WX)
+endif()
+
 include(CTest)
 
 add_library(MusicMic.Audio SHARED

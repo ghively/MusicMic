@@ -7,6 +7,7 @@ artifacts/
 
 # Repository-local .NET CLI state
 .dotnet-cli/
+.dotnet-home/
 
 # Visual Studio and IDE state
 .vs/
