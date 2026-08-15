@@ -7,4 +7,6 @@ public interface IThemeService
     ThemePreference CurrentTheme { get; }
 
     void ApplyTheme(ThemePreference theme);
+
+    void RefreshSystemTheme();
 }

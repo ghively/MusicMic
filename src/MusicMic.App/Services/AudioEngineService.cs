@@ -3,33 +3,49 @@ using MusicMic.Core;
 namespace MusicMic.App.Services;
 
 /// <summary>
-/// Projects the native engine's immutable status into UI state. This class never invokes APIs
-/// that mutate application playback; capture and rendering remain exclusively native concerns.
+/// Serializes every native ABI call on background threads and projects only observed native
+/// state to the UI. It never exposes or invokes an application playback-routing operation.
 /// </summary>
 public sealed class AudioEngineService : IAudioEngineService
 {
+    private static readonly TimeSpan HealthyPollInterval = TimeSpan.FromMilliseconds(250);
+
     private readonly INativeAudioApi nativeAudio;
     private readonly IAsyncDelay delay;
+    private readonly IDiagnosticLogger diagnostics;
     private readonly CancellationTokenSource lifetime = new();
+    private readonly SemaphoreSlim nativeGate = new(1, 1);
     private readonly object sync = new();
-    private Task? recoveryTask;
+    private Task pendingConfiguration = Task.CompletedTask;
+    private Task? monitorTask;
+    private Task? disposalTask;
     private AudioEngineSnapshot snapshot = new(
         InjectionSnapshot.FromState(InjectionState.Initializing, false, false, false, false),
         [], [], null, null);
     private bool initialized;
     private bool restoreInjectionOnResume;
+    private bool disposed;
+    private bool sourceSelectionApplied;
+    private bool microphoneSelectionApplied;
+    private string? appliedSourceId;
+    private string? appliedMicrophoneId;
     private float sourceGain = 0.7f;
     private float microphoneGain = 1f;
 
     public AudioEngineService()
-        : this(new NativeAudioApi(), SystemAsyncDelay.Instance)
+        : this(new NativeAudioApi(), SystemAsyncDelay.Instance, DiagnosticLogger.CreateDefault())
     {
     }
 
-    public AudioEngineService(INativeAudioApi nativeAudio, IAsyncDelay? delay = null)
+    public AudioEngineService(
+        INativeAudioApi nativeAudio,
+        IAsyncDelay? delay = null,
+        IDiagnosticLogger? diagnostics = null)
     {
         this.nativeAudio = nativeAudio ?? throw new ArgumentNullException(nameof(nativeAudio));
         this.delay = delay ?? SystemAsyncDelay.Instance;
+        this.diagnostics = diagnostics ?? NullDiagnosticLogger.Instance;
+        this.diagnostics.Write("startup", "MusicMic managed audio service started.");
     }
 
     public AudioEngineSnapshot Snapshot
@@ -45,126 +61,216 @@ public sealed class AudioEngineService : IAudioEngineService
 
     public event EventHandler<AudioEngineSnapshot>? SnapshotChanged;
 
-    public Task InitializeAsync(CancellationToken cancellationToken = default)
+    public async Task InitializeAsync(CancellationToken cancellationToken = default)
     {
-        cancellationToken.ThrowIfCancellationRequested();
-        if (initialized)
+        ThrowIfDisposed();
+        await RunNativeAsync(() =>
         {
-            return RefreshAsync(cancellationToken);
-        }
-
-        NativeAudioResult result = nativeAudio.Initialize();
-        if (result != NativeAudioResult.Ok)
-        {
-            PublishFailure(result);
-            StartRecoveryLoop();
-            return Task.CompletedTask;
-        }
-
-        initialized = true;
-        return RefreshAsync(cancellationToken);
+            if (initialized)
+            {
+                RefreshCore();
+            }
+            else
+            {
+                InitializeCore();
+            }
+        }, cancellationToken).ConfigureAwait(false);
+        StartMonitorLoop();
     }
 
     public void SelectSource(string? sourceId)
     {
-        if (string.IsNullOrWhiteSpace(sourceId))
+        ThrowIfDisposed();
+        if (Snapshot.Injection.IsInjectionActive)
         {
-            Publish(Snapshot with { SelectedSourceId = null });
             return;
         }
 
-        if (initialized)
-        {
-            NativeAudioResult result = nativeAudio.SelectSource(sourceId);
-            if (result != NativeAudioResult.Ok)
-            {
-                PublishFailure(result);
-                StartRecoveryLoop();
-                return;
-            }
-        }
-
-        Publish(Snapshot with { SelectedSourceId = sourceId, ErrorMessage = null });
+        string? normalized = string.IsNullOrWhiteSpace(sourceId) ? null : sourceId;
+        Publish(Snapshot with { SelectedSourceId = normalized, ErrorMessage = null });
+        diagnostics.Write("source-selection", normalized ?? "No source selected.");
+        QueueConfiguration();
     }
 
     public void SelectMicrophone(string? microphoneId)
     {
-        if (string.IsNullOrWhiteSpace(microphoneId))
+        ThrowIfDisposed();
+        if (Snapshot.Injection.IsInjectionActive)
         {
-            Publish(Snapshot with { SelectedMicrophoneId = null });
             return;
         }
 
-        if (initialized)
-        {
-            NativeAudioResult result = nativeAudio.SelectMicrophone(microphoneId);
-            if (result != NativeAudioResult.Ok)
-            {
-                PublishFailure(result);
-                StartRecoveryLoop();
-                return;
-            }
-        }
-
-        Publish(Snapshot with { SelectedMicrophoneId = microphoneId, ErrorMessage = null });
+        string? normalized = string.IsNullOrWhiteSpace(microphoneId) ? null : microphoneId;
+        Publish(Snapshot with { SelectedMicrophoneId = normalized, ErrorMessage = null });
+        diagnostics.Write("microphone-selection", normalized ?? "No microphone selected.");
+        QueueConfiguration();
     }
 
     public void SetSourceGain(double gain)
     {
         ArgumentOutOfRangeException.ThrowIfLessThan(gain, 0);
         ArgumentOutOfRangeException.ThrowIfGreaterThan(gain, 1);
+        ThrowIfDisposed();
         sourceGain = (float)gain;
-        ApplyGainIfInitialized(nativeAudio.SetSourceGain, sourceGain);
+        QueueConfiguration();
     }
 
     public void SetMicrophoneGain(double gain)
     {
         ArgumentOutOfRangeException.ThrowIfLessThan(gain, 0);
         ArgumentOutOfRangeException.ThrowIfGreaterThan(gain, 1);
+        ThrowIfDisposed();
         microphoneGain = (float)gain;
-        ApplyGainIfInitialized(nativeAudio.SetMicrophoneGain, microphoneGain);
+        QueueConfiguration();
     }
 
     public async Task StartAsync(CancellationToken cancellationToken = default)
     {
-        cancellationToken.ThrowIfCancellationRequested();
+        ThrowIfDisposed();
         RoutingGuard.Validate(RoutingGuard.CreateRequest(InjectionCommand.Start));
-        NativeAudioResult result = nativeAudio.StartInjection();
-        if (result != NativeAudioResult.Ok)
+        await GetPendingConfiguration().WaitAsync(cancellationToken).ConfigureAwait(false);
+        await RunNativeAsync(() =>
         {
-            restoreInjectionOnResume = false;
-            PublishFailure(result);
-            StartRecoveryLoop();
-            return;
-        }
+            NativeAudioResult result = nativeAudio.StartInjection();
+            if (result != NativeAudioResult.Ok)
+            {
+                restoreInjectionOnResume = false;
+                PublishFailure(result);
+                return;
+            }
 
-        restoreInjectionOnResume = true;
-        await RefreshAsync(cancellationToken);
+            restoreInjectionOnResume = true;
+            diagnostics.Write("injection-started", "Native engine accepted the injection request.");
+            RefreshCore();
+        }, cancellationToken).ConfigureAwait(false);
     }
 
     public async Task StopAsync(CancellationToken cancellationToken = default)
     {
-        cancellationToken.ThrowIfCancellationRequested();
+        ThrowIfDisposed();
         RoutingGuard.Validate(RoutingGuard.CreateRequest(InjectionCommand.Stop));
-        restoreInjectionOnResume = false;
-        NativeAudioResult result = nativeAudio.StopInjection();
-        if (result != NativeAudioResult.Ok)
+        await RunNativeAsync(() =>
         {
-            PublishFailure(result);
-            StartRecoveryLoop();
-            return;
-        }
+            restoreInjectionOnResume = false;
+            NativeAudioResult result = nativeAudio.StopInjection();
+            if (result != NativeAudioResult.Ok)
+            {
+                PublishFailure(result);
+                return;
+            }
 
-        await RefreshAsync(cancellationToken);
+            diagnostics.Write("injection-stopped", "Native engine stopped injection.");
+            RefreshCore();
+        }, cancellationToken).ConfigureAwait(false);
     }
 
     /// <summary>Refreshes actual native status; it does not guess or replace any device.</summary>
     public Task RefreshAsync(CancellationToken cancellationToken = default)
     {
-        cancellationToken.ThrowIfCancellationRequested();
+        ThrowIfDisposed();
+        return RunNativeAsync(RefreshCore, cancellationToken);
+    }
+
+    /// <summary>Re-enumerates after Windows resume and restores only a prior safe injection.</summary>
+    public Task HandlePowerResumeAsync(CancellationToken cancellationToken = default)
+    {
+        ThrowIfDisposed();
+        return RunNativeAsync(() =>
+        {
+            diagnostics.Write("system-resume", "Rebuilding audio discovery after Windows resume.");
+            NativeAudioResult resume = nativeAudio.HandleSystemResume();
+            if (resume != NativeAudioResult.Ok)
+            {
+                PublishFailure(resume);
+                return;
+            }
+
+            appliedSourceId = null;
+            appliedMicrophoneId = null;
+            sourceSelectionApplied = false;
+            microphoneSelectionApplied = false;
+            RefreshCore();
+            AudioEngineSnapshot current = Snapshot;
+            if (!restoreInjectionOnResume || current.Injection.IsInjectionActive || !CanSafelyInject(current.Injection))
+            {
+                return;
+            }
+
+            NativeAudioResult start = nativeAudio.StartInjection();
+            if (start != NativeAudioResult.Ok)
+            {
+                PublishFailure(start);
+                return;
+            }
+
+            RefreshCore();
+        }, cancellationToken);
+    }
+
+    public ValueTask DisposeAsync()
+    {
+        lock (sync)
+        {
+            disposalTask ??= DisposeCoreAsync();
+            return new ValueTask(disposalTask);
+        }
+    }
+
+    private async Task DisposeCoreAsync()
+    {
+        lifetime.Cancel();
+        Task? monitor;
+        Task configuration;
+        lock (sync)
+        {
+            disposed = true;
+            monitor = monitorTask;
+            configuration = pendingConfiguration;
+        }
+
+        await IgnoreCancellationAsync(monitor).ConfigureAwait(false);
+        await IgnoreCancellationAsync(configuration).ConfigureAwait(false);
+        await RunNativeAsync(() =>
+        {
+            if (initialized)
+            {
+                NativeAudioResult result = nativeAudio.Shutdown();
+                diagnostics.Write("audio-shutdown", $"Native shutdown result: {result}.");
+                initialized = false;
+            }
+        }, CancellationToken.None).ConfigureAwait(false);
+
+        SnapshotChanged = null;
+        diagnostics.Write("shutdown", "MusicMic managed audio service stopped.");
+        diagnostics.Dispose();
+        nativeGate.Dispose();
+        lifetime.Dispose();
+    }
+
+    private void InitializeCore()
+    {
+        diagnostics.Write("audio-initialize", "Initializing the native audio engine.");
+        NativeAudioResult result = nativeAudio.Initialize();
+        if (result != NativeAudioResult.Ok)
+        {
+            PublishFailure(result);
+            return;
+        }
+
+        initialized = true;
+        appliedSourceId = null;
+        appliedMicrophoneId = null;
+        sourceSelectionApplied = false;
+        microphoneSelectionApplied = false;
+        diagnostics.Write("audio-initialize", "Native audio engine initialized.");
+        RefreshCore();
+    }
+
+    private void RefreshCore()
+    {
         if (!initialized)
         {
-            return Task.CompletedTask;
+            return;
         }
 
         NativeAudioResult refreshResult = nativeAudio.RefreshDevices();
@@ -172,32 +278,39 @@ public sealed class AudioEngineService : IAudioEngineService
         if (statusResult != NativeAudioResult.Ok)
         {
             PublishFailure(statusResult);
-            StartRecoveryLoop();
-            return Task.CompletedTask;
+            return;
         }
 
-        NativeAudioResult discoveryResult = DiscoverDevices(out IReadOnlyList<AudioApplication> sources, out IReadOnlyList<MicrophoneDevice> microphones);
+        NativeAudioResult discoveryResult = DiscoverDevices(
+            out IReadOnlyList<AudioApplication> sources,
+            out IReadOnlyList<MicrophoneDevice> microphones);
         if (discoveryResult != NativeAudioResult.Ok)
         {
             PublishFailure(discoveryResult);
-            StartRecoveryLoop();
-            return Task.CompletedTask;
+            return;
         }
 
         AudioEngineSnapshot previous = Snapshot;
         string? sourceId = ChooseSourceId(previous.SelectedSourceId, sources);
         string? microphoneId = ChooseMicrophoneId(previous.SelectedMicrophoneId, microphones);
-        NativeAudioResult configurationResult = ApplySelectionAndGains(previous, sourceId, microphoneId);
+        NativeAudioResult configurationResult = ApplySelectionAndGains(sourceId, microphoneId, sources, microphones);
         if (configurationResult != NativeAudioResult.Ok)
         {
             PublishFailure(configurationResult);
-            StartRecoveryLoop();
-            return Task.CompletedTask;
+            return;
         }
 
         NativeAudioResult reportResult = refreshResult != NativeAudioResult.Ok ? refreshResult : StateResult(nativeStatus);
+        if (reportResult == NativeAudioResult.OutputUnavailable && nativeStatus.InjectionRequested)
+        {
+            NativeAudioResult stopResult = nativeAudio.StopInjection();
+            diagnostics.Write("output-unavailable", $"Stopped injection after output loss: {stopResult}.");
+            restoreInjectionOnResume = false;
+            nativeStatus = nativeStatus with { InjectionRequested = false };
+        }
+
         string? error = reportResult == NativeAudioResult.Ok ? null : GetNativeError(reportResult);
-        var updated = Snapshot with
+        Publish(previous with
         {
             Injection = Project(nativeStatus, reportResult),
             Sources = sources,
@@ -208,91 +321,115 @@ public sealed class AudioEngineService : IAudioEngineService
             MicrophonePeak = nativeStatus.MicrophonePeak,
             OutputPeak = nativeStatus.OutputPeak,
             ErrorMessage = error,
-        };
-        Publish(updated);
-        if (ShouldRecover(updated.Injection))
-        {
-            StartRecoveryLoop();
-        }
-
-        return Task.CompletedTask;
+        });
     }
 
-    /// <summary>Re-enumerates after Windows resume and restores only a prior safe injection.</summary>
-    public async Task HandlePowerResumeAsync(CancellationToken cancellationToken = default)
+    private async Task MonitorLoopAsync()
     {
-        cancellationToken.ThrowIfCancellationRequested();
-        NativeAudioResult resume = nativeAudio.HandleSystemResume();
-        if (resume != NativeAudioResult.Ok)
-        {
-            PublishFailure(resume);
-            StartRecoveryLoop();
-            return;
-        }
-
-        await RefreshAsync(cancellationToken);
-        AudioEngineSnapshot current = Snapshot;
-        if (!restoreInjectionOnResume || !CanSafelyInject(current.Injection))
-        {
-            return;
-        }
-
-        NativeAudioResult start = nativeAudio.StartInjection();
-        if (start != NativeAudioResult.Ok)
-        {
-            PublishFailure(start);
-            StartRecoveryLoop();
-            return;
-        }
-
-        await RefreshAsync(cancellationToken);
-    }
-
-    public ValueTask DisposeAsync()
-    {
-        lifetime.Cancel();
+        int recoveryAttempt = 0;
         try
         {
-            recoveryTask?.GetAwaiter().GetResult();
-        }
-        catch (OperationCanceledException)
-        {
-            // Expected while disposing the app.
-        }
+            while (!lifetime.IsCancellationRequested)
+            {
+                bool recovering = !initialized || ShouldRecover(Snapshot.Injection);
+                TimeSpan interval = recovering
+                    ? ReconnectSchedule.Default.GetDelay(recoveryAttempt++)
+                    : HealthyPollInterval;
+                await delay.Delay(interval, lifetime.Token).ConfigureAwait(false);
+                await RunNativeAsync(() =>
+                {
+                    if (initialized)
+                    {
+                        RefreshCore();
+                    }
+                    else
+                    {
+                        diagnostics.Write("reconnect-attempt", "Retrying native audio initialization.");
+                        InitializeCore();
+                    }
+                }, lifetime.Token).ConfigureAwait(false);
 
-        if (initialized)
-        {
-            nativeAudio.Shutdown();
-            initialized = false;
+                if (initialized && !ShouldRecover(Snapshot.Injection))
+                {
+                    recoveryAttempt = 0;
+                }
+            }
         }
-
-        lifetime.Dispose();
-        SnapshotChanged = null;
-        return ValueTask.CompletedTask;
+        catch (OperationCanceledException) when (lifetime.IsCancellationRequested)
+        {
+            // Normal application shutdown.
+        }
     }
 
-    private async Task RecoveryLoopAsync()
+    private void StartMonitorLoop()
     {
-        int attempt = 0;
-        while (!lifetime.IsCancellationRequested)
+        lock (sync)
         {
-            await delay.Delay(ReconnectSchedule.Default.GetDelay(attempt++), lifetime.Token);
-            await RefreshAsync(lifetime.Token);
-            if (!ShouldRecover(Snapshot.Injection))
+            if (disposed || monitorTask is { IsCompleted: false })
             {
                 return;
             }
+
+            monitorTask = MonitorLoopAsync();
         }
     }
 
-    private void StartRecoveryLoop()
+    private void QueueConfiguration()
     {
-        if (lifetime.IsCancellationRequested || recoveryTask is { IsCompleted: false })
+        lock (sync)
         {
-            return;
-        }
+            if (!initialized || disposed)
+            {
+                return;
+            }
 
-        recoveryTask = RecoveryLoopAsync();
+            pendingConfiguration = ApplyConfigurationAsync();
+        }
+    }
+
+    private async Task ApplyConfigurationAsync()
+    {
+        try
+        {
+            await RunNativeAsync(() =>
+            {
+                AudioEngineSnapshot current = Snapshot;
+                NativeAudioResult result = ApplySelectionAndGains(
+                    current.SelectedSourceId,
+                    current.SelectedMicrophoneId,
+                    current.Sources,
+                    current.Microphones);
+                if (result != NativeAudioResult.Ok)
+                {
+                    PublishFailure(result);
+                }
+            }, lifetime.Token).ConfigureAwait(false);
+        }
+        catch (OperationCanceledException) when (lifetime.IsCancellationRequested)
+        {
+            // Normal application shutdown.
+        }
+    }
+
+    private Task GetPendingConfiguration()
+    {
+        lock (sync)
+        {
+            return pendingConfiguration;
+        }
+    }
+
+    private async Task RunNativeAsync(Action operation, CancellationToken cancellationToken)
+    {
+        await nativeGate.WaitAsync(cancellationToken).ConfigureAwait(false);
+        try
+        {
+            await Task.Run(operation, cancellationToken).ConfigureAwait(false);
+        }
+        finally
+        {
+            nativeGate.Release();
+        }
     }
 
     private void PublishFailure(NativeAudioResult result)
@@ -305,6 +442,8 @@ public sealed class AudioEngineService : IAudioEngineService
             NativeAudioResult.OutputUnavailable => InjectionState.OutputUnavailable,
             _ => InjectionState.Error,
         };
+        string message = GetNativeError(result);
+        diagnostics.Write("audio-failure", $"{result}: {message}");
         Publish(current with
         {
             Injection = InjectionSnapshot.FromState(
@@ -312,8 +451,9 @@ public sealed class AudioEngineService : IAudioEngineService
                 current.Injection.IsSourceAvailable,
                 current.Injection.IsMicrophoneAvailable,
                 result != NativeAudioResult.OutputUnavailable && current.Injection.IsOutputAvailable,
-                false),
-            ErrorMessage = GetNativeError(result),
+                (result is NativeAudioResult.SourceUnavailable or NativeAudioResult.MicrophoneUnavailable) &&
+                    current.Injection.IsInjectionActive),
+            ErrorMessage = message,
         });
     }
 
@@ -327,15 +467,22 @@ public sealed class AudioEngineService : IAudioEngineService
 
     private void Publish(AudioEngineSnapshot updated)
     {
+        EventHandler<AudioEngineSnapshot>? handlers;
         lock (sync)
         {
+            if (disposed)
+            {
+                return;
+            }
+
             snapshot = updated;
+            handlers = SnapshotChanged;
         }
 
-        SnapshotChanged?.Invoke(this, updated);
+        handlers?.Invoke(this, updated);
     }
 
-    private static InjectionSnapshot Project(NativeAudioStatus status, NativeAudioResult result = NativeAudioResult.Ok) =>
+    private static InjectionSnapshot Project(NativeAudioStatus status, NativeAudioResult result) =>
         InjectionSnapshot.FromState(
             result switch
             {
@@ -364,19 +511,12 @@ public sealed class AudioEngineService : IAudioEngineService
         out IReadOnlyList<MicrophoneDevice> microphones)
     {
         NativeAudioResult sourceResult = nativeAudio.GetSourceCount(out uint sourceCount);
-        if (sourceResult != NativeAudioResult.Ok)
-        {
-            sources = [];
-            microphones = [];
-            return sourceResult;
-        }
-
         const uint maximumDeviceCount = 512;
-        if (sourceCount > maximumDeviceCount)
+        if (sourceResult != NativeAudioResult.Ok || sourceCount > maximumDeviceCount)
         {
             sources = [];
             microphones = [];
-            return NativeAudioResult.InternalError;
+            return sourceResult == NativeAudioResult.Ok ? NativeAudioResult.InternalError : sourceResult;
         }
 
         var discoveredSources = new List<AudioApplication>((int)sourceCount);
@@ -427,50 +567,45 @@ public sealed class AudioEngineService : IAudioEngineService
     }
 
     private NativeAudioResult ApplySelectionAndGains(
-        AudioEngineSnapshot previous,
         string? sourceId,
-        string? microphoneId)
+        string? microphoneId,
+        IReadOnlyList<AudioApplication> sources,
+        IReadOnlyList<MicrophoneDevice> microphones)
     {
-        if (!string.IsNullOrWhiteSpace(sourceId) && !string.Equals(sourceId, previous.SelectedSourceId, StringComparison.Ordinal))
+        bool canApplySource = string.IsNullOrWhiteSpace(sourceId) ||
+            sources.Any(source => string.Equals(source.Id, sourceId, StringComparison.Ordinal));
+        if (canApplySource &&
+            (!sourceSelectionApplied || !string.Equals(sourceId, appliedSourceId, StringComparison.Ordinal)))
         {
-            NativeAudioResult selection = nativeAudio.SelectSource(sourceId);
+            NativeAudioResult selection = nativeAudio.SelectSource(sourceId ?? string.Empty);
             if (selection != NativeAudioResult.Ok)
             {
                 return selection;
             }
+
+            appliedSourceId = sourceId;
+            sourceSelectionApplied = true;
         }
 
-        if (!string.IsNullOrWhiteSpace(microphoneId) && !string.Equals(microphoneId, previous.SelectedMicrophoneId, StringComparison.Ordinal))
+        bool canApplyMicrophone = string.IsNullOrWhiteSpace(microphoneId) ||
+            microphones.Any(microphone => string.Equals(microphone.Id, microphoneId, StringComparison.Ordinal));
+        if (canApplyMicrophone &&
+            (!microphoneSelectionApplied || !string.Equals(microphoneId, appliedMicrophoneId, StringComparison.Ordinal)))
         {
-            NativeAudioResult selection = nativeAudio.SelectMicrophone(microphoneId);
+            NativeAudioResult selection = nativeAudio.SelectMicrophone(microphoneId ?? string.Empty);
             if (selection != NativeAudioResult.Ok)
             {
                 return selection;
             }
+
+            appliedMicrophoneId = microphoneId;
+            microphoneSelectionApplied = true;
         }
 
         NativeAudioResult sourceGainResult = nativeAudio.SetSourceGain(sourceGain);
-        if (sourceGainResult != NativeAudioResult.Ok)
-        {
-            return sourceGainResult;
-        }
-
-        return nativeAudio.SetMicrophoneGain(microphoneGain);
-    }
-
-    private void ApplyGainIfInitialized(Func<float, NativeAudioResult> setter, float gain)
-    {
-        if (!initialized)
-        {
-            return;
-        }
-
-        NativeAudioResult result = setter(gain);
-        if (result != NativeAudioResult.Ok)
-        {
-            PublishFailure(result);
-            StartRecoveryLoop();
-        }
+        return sourceGainResult == NativeAudioResult.Ok
+            ? nativeAudio.SetMicrophoneGain(microphoneGain)
+            : sourceGainResult;
     }
 
     private static string? ChooseSourceId(string? currentId, IReadOnlyList<AudioApplication> sources) =>
@@ -500,4 +635,29 @@ public sealed class AudioEngineService : IAudioEngineService
             InjectionState.MicrophoneUnavailable or
             InjectionState.OutputUnavailable or
             InjectionState.Error;
+
+    private static async Task IgnoreCancellationAsync(Task? task)
+    {
+        if (task is null)
+        {
+            return;
+        }
+
+        try
+        {
+            await task.ConfigureAwait(false);
+        }
+        catch (OperationCanceledException)
+        {
+            // Normal application shutdown.
+        }
+    }
+
+    private void ThrowIfDisposed()
+    {
+        lock (sync)
+        {
+            ObjectDisposedException.ThrowIf(disposed, this);
+        }
+    }
 }

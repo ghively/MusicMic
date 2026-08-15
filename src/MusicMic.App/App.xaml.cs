@@ -11,6 +11,7 @@ public partial class App : System.Windows.Application
     private TrayService? tray;
     private MainViewModel? viewModel;
     private bool isExiting;
+    private bool servicesDisposed;
 
     protected override async void OnStartup(StartupEventArgs e)
     {
@@ -24,20 +25,28 @@ public partial class App : System.Windows.Application
         tray = new TrayService();
         tray.Initialize(
             _ => viewModel.ToggleInjectionAsync(),
+            id => viewModel.SelectedSource = viewModel.Sources.FirstOrDefault(source => source.Id == id),
+            id => viewModel.SelectedMicrophone = viewModel.Microphones.FirstOrDefault(microphone => microphone.Id == id),
             OpenMainWindow,
             OpenSettings,
             ExitFromTray);
-        engine.SnapshotChanged += (_, snapshot) => tray.Update(snapshot);
+        engine.SnapshotChanged += OnEngineSnapshotChanged;
         tray.Update(engine.Snapshot);
         SystemEvents.PowerModeChanged += OnPowerModeChanged;
+        SystemEvents.UserPreferenceChanged += OnUserPreferenceChanged;
         await viewModel.InitializeAsync();
     }
 
     protected override void OnExit(ExitEventArgs e)
     {
         SystemEvents.PowerModeChanged -= OnPowerModeChanged;
-        tray?.Dispose();
-        engine?.DisposeAsync().AsTask().GetAwaiter().GetResult();
+        SystemEvents.UserPreferenceChanged -= OnUserPreferenceChanged;
+        if (!servicesDisposed)
+        {
+            tray?.Dispose();
+            engine?.DisposeAsync().AsTask().ConfigureAwait(false).GetAwaiter().GetResult();
+            servicesDisposed = true;
+        }
         base.OnExit(e);
     }
 
@@ -71,17 +80,51 @@ public partial class App : System.Windows.Application
         }
     }
 
-    private void ExitFromTray()
+    private async void ExitFromTray()
     {
         isExiting = true;
+        SystemEvents.PowerModeChanged -= OnPowerModeChanged;
+        SystemEvents.UserPreferenceChanged -= OnUserPreferenceChanged;
+        if (engine is not null)
+        {
+            engine.SnapshotChanged -= OnEngineSnapshotChanged;
+        }
+
+        tray?.Dispose();
+        if (engine is not null)
+        {
+            await engine.DisposeAsync();
+        }
+
+        servicesDisposed = true;
         Shutdown();
     }
 
-    private async void OnPowerModeChanged(object sender, PowerModeChangedEventArgs e)
+    private void OnPowerModeChanged(object sender, PowerModeChangedEventArgs e)
     {
         if (e.Mode == PowerModes.Resume && engine is not null)
         {
-            await engine.HandlePowerResumeAsync();
+            Dispatcher.BeginInvoke(new Action(async () => await engine.HandlePowerResumeAsync()));
+        }
+    }
+
+    private void OnEngineSnapshotChanged(object? sender, AudioEngineSnapshot snapshot)
+    {
+        if (Dispatcher.CheckAccess())
+        {
+            tray?.Update(snapshot);
+        }
+        else
+        {
+            Dispatcher.BeginInvoke(new Action(() => tray?.Update(snapshot)));
+        }
+    }
+
+    private void OnUserPreferenceChanged(object sender, UserPreferenceChangedEventArgs e)
+    {
+        if (e.Category is UserPreferenceCategory.General or UserPreferenceCategory.VisualStyle)
+        {
+            Dispatcher.BeginInvoke(new Action(() => viewModel?.RefreshSystemTheme()));
         }
     }
 }

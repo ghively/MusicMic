@@ -10,6 +10,7 @@ public sealed class MainViewModel : ObservableObject
     private readonly ISettingsService settingsService;
     private readonly IThemeService themeService;
     private readonly IStartupService startupService;
+    private readonly IUiDispatcher uiDispatcher;
     private AudioApplication? selectedSource;
     private MicrophoneDevice? selectedMicrophone;
     private double sourcePercentage;
@@ -23,12 +24,14 @@ public sealed class MainViewModel : ObservableObject
         IAudioEngineService audioEngine,
         ISettingsService settingsService,
         IThemeService themeService,
-        IStartupService? startupService = null)
+        IStartupService? startupService = null,
+        IUiDispatcher? uiDispatcher = null)
     {
         this.audioEngine = audioEngine ?? throw new ArgumentNullException(nameof(audioEngine));
         this.settingsService = settingsService ?? throw new ArgumentNullException(nameof(settingsService));
         this.themeService = themeService ?? throw new ArgumentNullException(nameof(themeService));
         this.startupService = startupService ?? new StartupService();
+        this.uiDispatcher = uiDispatcher ?? new WpfUiDispatcher(System.Windows.Threading.Dispatcher.CurrentDispatcher);
 
         MusicMicSettings settings = settingsService.Load();
         sourcePercentage = settings.SourceVolume * 100;
@@ -70,6 +73,11 @@ public sealed class MainViewModel : ObservableObject
         get => selectedSource;
         set
         {
+            if (!isApplyingSnapshot && IsInjecting)
+            {
+                return;
+            }
+
             if (!SetProperty(ref selectedSource, value))
             {
                 return;
@@ -91,6 +99,11 @@ public sealed class MainViewModel : ObservableObject
         get => selectedMicrophone;
         set
         {
+            if (!isApplyingSnapshot && IsInjecting)
+            {
+                return;
+            }
+
             if (!SetProperty(ref selectedMicrophone, value))
             {
                 return;
@@ -170,10 +183,24 @@ public sealed class MainViewModel : ObservableObject
 
     public bool IsInjecting => injection.IsInjectionActive;
 
+    public bool CanChangeSelection => !IsInjecting;
+
     public bool CanToggleInjection => IsInjecting ||
         (injection.IsOutputAvailable && SelectedSource is not null && SelectedMicrophone is not null);
 
-    public string PrimaryActionText => IsInjecting ? "Stop" : "Start";
+    public string PrimaryActionText => IsInjecting ? "STOP" : "START INJECTING";
+
+    public string ActiveSourceName => SelectedSource?.DisplayName ?? "Source reconnecting";
+
+    public string ActiveMicrophoneName => SelectedMicrophone?.DisplayName ?? "Microphone reconnecting";
+
+    public string SourceStatusText => injection.IsSourceAvailable
+        ? $"{ActiveSourceName} audio detected"
+        : $"{ActiveSourceName} unavailable — reconnecting";
+
+    public string MicrophoneStatusText => injection.IsMicrophoneAvailable
+        ? $"{ActiveMicrophoneName} ready"
+        : $"{ActiveMicrophoneName} unavailable — reconnecting";
 
     public string StatusText => State switch
     {
@@ -198,11 +225,13 @@ public sealed class MainViewModel : ObservableObject
     };
 
     public string PlaybackAssuranceText => SelectedSource is null
-        ? "Your selected app keeps playing normally. MusicMic sends only a copy to CABLE Output."
-        : $"{SelectedSource.DisplayName} keeps playing normally. MusicMic sends only a copy to CABLE Output.";
+        ? "You still hear your selected app normally through your speakers/headphones."
+        : $"You still hear {SelectedSource.DisplayName} normally through your speakers/headphones.";
 
     public async Task InitializeAsync(CancellationToken cancellationToken = default) =>
         await audioEngine.InitializeAsync(cancellationToken);
+
+    public void RefreshSystemTheme() => themeService.RefreshSystemTheme();
 
     public async Task ToggleInjectionAsync(CancellationToken cancellationToken = default)
     {
@@ -216,7 +245,17 @@ public sealed class MainViewModel : ObservableObject
         }
     }
 
-    private void OnSnapshotChanged(object? sender, AudioEngineSnapshot snapshot) => ApplySnapshot(snapshot);
+    private void OnSnapshotChanged(object? sender, AudioEngineSnapshot snapshot)
+    {
+        if (uiDispatcher.CheckAccess())
+        {
+            ApplySnapshot(snapshot);
+        }
+        else
+        {
+            uiDispatcher.Post(() => ApplySnapshot(snapshot));
+        }
+    }
 
     private void ApplySnapshot(
         AudioEngineSnapshot snapshot,
@@ -243,12 +282,18 @@ public sealed class MainViewModel : ObservableObject
         OnPropertyChanged(nameof(State));
         OnPropertyChanged(nameof(StatusText));
         OnPropertyChanged(nameof(StatusDetail));
+        OnPropertyChanged(nameof(PlaybackAssuranceText));
+        OnPropertyChanged(nameof(ActiveSourceName));
+        OnPropertyChanged(nameof(ActiveMicrophoneName));
+        OnPropertyChanged(nameof(SourceStatusText));
+        OnPropertyChanged(nameof(MicrophoneStatusText));
         NotifyActionStateChanged();
     }
 
     private void NotifyActionStateChanged()
     {
         OnPropertyChanged(nameof(IsInjecting));
+        OnPropertyChanged(nameof(CanChangeSelection));
         OnPropertyChanged(nameof(CanToggleInjection));
         OnPropertyChanged(nameof(PrimaryActionText));
         ToggleInjectionCommand.RaiseCanExecuteChanged();

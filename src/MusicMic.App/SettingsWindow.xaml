@@ -3,11 +3,14 @@
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
         Title="MusicMic settings" Width="360" Height="230" ResizeMode="NoResize"
         WindowStartupLocation="CenterOwner" Background="{DynamicResource WindowBackgroundBrush}"
-        Foreground="{DynamicResource PrimaryTextBrush}" FontFamily="Segoe UI" FontSize="14">
+        Foreground="{DynamicResource PrimaryTextBrush}" FontFamily="Segoe UI Variable Text, Segoe UI" FontSize="14"
+        AutomationProperties.Name="MusicMic settings">
     <StackPanel Margin="24">
         <TextBlock Text="Settings" FontSize="22" FontWeight="SemiBold" Margin="0,0,0,18" />
         <TextBlock Text="Theme" FontWeight="SemiBold" Margin="0,0,0,7" />
-        <ComboBox ItemsSource="{Binding Themes}" SelectedItem="{Binding Theme}" Height="38" />
-        <CheckBox Content="Start MusicMic with Windows" IsChecked="{Binding StartWithWindows}" Margin="0,20,0,0" />
+        <ComboBox ItemsSource="{Binding Themes}" SelectedItem="{Binding Theme}" Height="38"
+                  AutomationProperties.Name="Theme preference" />
+        <CheckBox Content="Start MusicMic with Windows" IsChecked="{Binding StartWithWindows}" Margin="0,20,0,0"
+                  AutomationProperties.Name="Start MusicMic with Windows" />
     </StackPanel>
 </Window>

@@ -40,6 +40,14 @@ public sealed class ThemeService : IThemeService
         dictionaries.Insert(0, replacement);
     }
 
+    public void RefreshSystemTheme()
+    {
+        if (CurrentTheme == ThemePreference.System)
+        {
+            ApplyTheme(ThemePreference.System);
+        }
+    }
+
     private static ThemePreference ReadSystemTheme()
     {
         const string path = @"Software\Microsoft\Windows\CurrentVersion\Themes\Personalize";

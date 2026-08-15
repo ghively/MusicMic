@@ -34,7 +34,7 @@ public sealed class MainViewModelTests
         viewModel.SelectedSource = viewModel.Sources.Single(source => source.DisplayName == "Spotify");
 
         Assert.Equal(
-            "Spotify keeps playing normally. MusicMic sends only a copy to CABLE Output.",
+            "You still hear Spotify normally through your speakers/headphones.",
             viewModel.PlaybackAssuranceText);
     }
 
@@ -46,14 +46,56 @@ public sealed class MainViewModelTests
         await viewModel.ToggleInjectionAsync();
 
         Assert.True(viewModel.IsInjecting);
-        Assert.Equal("Stop", viewModel.PrimaryActionText);
+        Assert.Equal("STOP", viewModel.PrimaryActionText);
         Assert.Equal("Injecting", viewModel.StatusText);
 
         await viewModel.ToggleInjectionAsync();
 
         Assert.False(viewModel.IsInjecting);
-        Assert.Equal("Start", viewModel.PrimaryActionText);
+        Assert.Equal("START INJECTING", viewModel.PrimaryActionText);
         Assert.Equal("Ready", viewModel.StatusText);
+    }
+
+    [Fact]
+    public async Task Injecting_DisablesSourceAndMicrophoneSelectionAndIgnoresRebinds()
+    {
+        FakeAudioEngine engine = FakeAudioEngine.Ready();
+        var viewModel = CreateViewModel(engine);
+        await viewModel.ToggleInjectionAsync();
+        int sourceSelections = engine.SourceSelectionCalls;
+        int microphoneSelections = engine.MicrophoneSelectionCalls;
+
+        viewModel.SelectedSource = viewModel.Sources.Single(source => source.DisplayName == "Browser");
+        viewModel.SelectedMicrophone = null;
+
+        Assert.False(viewModel.CanChangeSelection);
+        Assert.Equal(sourceSelections, engine.SourceSelectionCalls);
+        Assert.Equal(microphoneSelections, engine.MicrophoneSelectionCalls);
+        Assert.Equal("Spotify", viewModel.SelectedSource?.DisplayName);
+        Assert.NotNull(viewModel.SelectedMicrophone);
+    }
+
+    [Fact]
+    public async Task SnapshotRaisedOffUiThread_IsPostedToUiDispatcherBeforeUpdatingCollections()
+    {
+        FakeAudioEngine engine = FakeAudioEngine.Ready();
+        var dispatcher = new QueuedUiDispatcher();
+        var viewModel = new MainViewModel(
+            engine,
+            new TestSettingsService(),
+            new ThemeService(),
+            new TestStartupService(),
+            dispatcher);
+        dispatcher.HasAccess = false;
+
+        await Task.Run(() => engine.PublishUnavailableSource());
+
+        Assert.Equal(InjectionState.Ready, viewModel.State);
+        Assert.Equal(1, dispatcher.PendingCount);
+
+        dispatcher.HasAccess = true;
+        dispatcher.Drain();
+        Assert.Equal(InjectionState.SourceUnavailable, viewModel.State);
     }
 
     [Fact]
@@ -71,7 +113,11 @@ public sealed class MainViewModelTests
     private static MainViewModel CreateViewModel(
         FakeAudioEngine engine,
         ThemeService? themeService = null) =>
-        new(engine, new TestSettingsService(), themeService ?? new ThemeService());
+        new(
+            engine,
+            new TestSettingsService(),
+            themeService ?? new ThemeService(),
+            new TestStartupService());
 
     private sealed class TestSettingsService : ISettingsService
     {
@@ -94,6 +140,10 @@ public sealed class MainViewModelTests
         public AudioEngineSnapshot Snapshot => snapshot;
 
         public event EventHandler<AudioEngineSnapshot>? SnapshotChanged;
+
+        public int SourceSelectionCalls { get; private set; }
+
+        public int MicrophoneSelectionCalls { get; private set; }
 
         public static FakeAudioEngine Ready()
         {
@@ -122,11 +172,17 @@ public sealed class MainViewModelTests
 
         public Task InitializeAsync(CancellationToken cancellationToken = default) => Task.CompletedTask;
 
-        public void SelectSource(string? sourceId) =>
+        public void SelectSource(string? sourceId)
+        {
+            SourceSelectionCalls++;
             Publish(snapshot with { SelectedSourceId = sourceId });
+        }
 
-        public void SelectMicrophone(string? microphoneId) =>
+        public void SelectMicrophone(string? microphoneId)
+        {
+            MicrophoneSelectionCalls++;
             Publish(snapshot with { SelectedMicrophoneId = microphoneId });
+        }
 
         public void SetSourceGain(double gain) { }
 
@@ -148,10 +204,48 @@ public sealed class MainViewModelTests
 
         public ValueTask DisposeAsync() => ValueTask.CompletedTask;
 
+        public void PublishUnavailableSource() => Publish(snapshot with
+        {
+            Injection = InjectionSnapshot.FromState(
+                InjectionState.SourceUnavailable,
+                false,
+                snapshot.Injection.IsMicrophoneAvailable,
+                snapshot.Injection.IsOutputAvailable,
+                snapshot.Injection.IsInjectionActive),
+        });
+
         private void Publish(AudioEngineSnapshot updated)
         {
             snapshot = updated;
             SnapshotChanged?.Invoke(this, snapshot);
+        }
+    }
+
+    private sealed class TestStartupService : IStartupService
+    {
+        public bool IsEnabled { get; private set; }
+
+        public void SetEnabled(bool enabled) => IsEnabled = enabled;
+    }
+
+    private sealed class QueuedUiDispatcher : IUiDispatcher
+    {
+        private readonly Queue<Action> actions = new();
+
+        public bool HasAccess { get; set; } = true;
+
+        public int PendingCount => actions.Count;
+
+        public bool CheckAccess() => HasAccess;
+
+        public void Post(Action action) => actions.Enqueue(action);
+
+        public void Drain()
+        {
+            while (actions.TryDequeue(out Action? action))
+            {
+                action();
+            }
         }
     }
 }

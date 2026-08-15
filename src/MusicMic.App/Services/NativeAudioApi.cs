@@ -60,10 +60,10 @@ public sealed class NativeAudioApi : INativeAudioApi
     }
 
     public NativeAudioResult SelectSource(string sourceId) =>
-        string.IsNullOrWhiteSpace(sourceId) ? NativeAudioResult.InvalidArgument : Invoke(() => NativeMethods.MM_SelectSource(sourceId));
+        Invoke(() => NativeMethods.MM_SelectSource(sourceId ?? string.Empty));
 
     public NativeAudioResult SelectMicrophone(string microphoneId) =>
-        string.IsNullOrWhiteSpace(microphoneId) ? NativeAudioResult.InvalidArgument : Invoke(() => NativeMethods.MM_SelectMicrophone(microphoneId));
+        Invoke(() => NativeMethods.MM_SelectMicrophone(microphoneId ?? string.Empty));
 
     public NativeAudioResult SetSourceGain(float gain) => Invoke(() => NativeMethods.MM_SetSourceGain(gain));
 
