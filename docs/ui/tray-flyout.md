@@ -64,6 +64,21 @@ Idle and active differ only in state, not in structure: the status dot turns gre
 the accent "Start injecting" button becomes a standard "Stop injecting" button, the selectors
 lock, and the tray icon gains its accent badge.
 
+## Reference images
+
+`flyout-light.png`, `flyout-dark.png`, `tray-menu.png` and `settings.png` in this folder are the
+images used by the README. They are renderings of this specification at 2× — the exact metrics,
+colours and copy the XAML implements — not captures of a running build, because the build host is
+not Windows. Replace them with real captures whenever a Windows build is available.
+
+To regenerate them, run `python3 source/build.py` from this folder and then, for each page:
+
+```bash
+chrome --headless --hide-scrollbars --force-device-scale-factor=2 \
+       --window-size=620,704 --screenshot=flyout-light.png flyout-light.html
+python3 source/crop.py flyout-light.png flyout-light.png 1232   # drop the window-chrome padding
+```
+
 ## Constraints kept from SPEC.md
 
 One window, no sidebar, no dashboard, no mixer surface, and no controls beyond one source
