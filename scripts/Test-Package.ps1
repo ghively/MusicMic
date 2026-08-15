@@ -80,6 +80,14 @@ if ($MsiPath) {
             throw "Installer smoke test failed: MSI property $($entry.Key) is '$actual', expected '$($entry.Value)'."
         }
     }
+
+    $shortcutView = $database.OpenView("SELECT `Name`, `Target` FROM `Shortcut` WHERE `Shortcut`='MusicMicStartMenuShortcut'")
+    $shortcutView.Execute()
+    $shortcut = $shortcutView.Fetch()
+    $shortcutView.Close()
+    if ($null -eq $shortcut -or $shortcut.StringData(1) -ne 'MusicMic' -or [string]::IsNullOrWhiteSpace($shortcut.StringData(2))) {
+        throw 'Installer smoke test failed: MSI does not provide the MusicMic Start menu shortcut.'
+    }
 }
 
 if ($BundlePath) {
