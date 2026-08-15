@@ -1,17 +1,62 @@
 <Wix xmlns="http://wixtoolset.org/schemas/v4/wxs"
-     xmlns:bal="http://wixtoolset.org/schemas/v4/wxs/bal">
+     xmlns:bal="http://wixtoolset.org/schemas/v4/wxs/bal"
+     xmlns:util="http://wixtoolset.org/schemas/v4/wxs/util">
   <Bundle Name="MusicMic Setup"
           Manufacturer="MusicMic"
           Version="$(var.ProductVersion)"
           UpgradeCode="C2622A4A-9337-4720-8DC1-3D4B7AE03BEF">
+    <WixVariable Id="WixStdBALicenseRtf" Value="VBCABLE-Notice.rtf" />
+    <util:RegistrySearch Id="VbCableService"
+                         Root="HKLM"
+                         Key="SYSTEM\CurrentControlSet\Services\VBAudioVACMME"
+                         Variable="VBCABLE_PRESENT"
+                         Result="exists" />
     <BootstrapperApplication>
       <bal:WixStandardBootstrapperApplication
-          LicenseUrl=""
-          Theme="hyperlinkLicense"
+          LicenseUrl="https://www.vb-cable.com/"
+          Theme="rtfLicense"
           SuppressOptionsUI="yes"
           SuppressRepair="yes" />
     </BootstrapperApplication>
     <Chain>
+      <ExePackage Id="VbCableDriver"
+                  DisplayName="VB-CABLE by VB-Audio (Donationware)"
+                  SourceFile="$(var.VbCableSetupPath)"
+                  DetectCondition="VBCABLE_PRESENT"
+                  Vital="yes"
+                  Permanent="yes"
+                  PerMachine="yes">
+        <Payload SourceFile="$(var.VbCablePayloadDirectory)\pin_in.ico" />
+        <Payload SourceFile="$(var.VbCablePayloadDirectory)\pin_out.ico" />
+        <Payload SourceFile="$(var.VbCablePayloadDirectory)\readme.txt" />
+        <Payload SourceFile="$(var.VbCablePayloadDirectory)\vbaudio_cable64arm_win10.sys" />
+        <Payload SourceFile="$(var.VbCablePayloadDirectory)\vbaudio_cable64_2003.cat" />
+        <Payload SourceFile="$(var.VbCablePayloadDirectory)\vbaudio_cable64_2003.sys" />
+        <Payload SourceFile="$(var.VbCablePayloadDirectory)\vbaudio_cable64_vista.cat" />
+        <Payload SourceFile="$(var.VbCablePayloadDirectory)\vbaudio_cable64_vista.sys" />
+        <Payload SourceFile="$(var.VbCablePayloadDirectory)\vbaudio_cable64_win10.cat" />
+        <Payload SourceFile="$(var.VbCablePayloadDirectory)\vbaudio_cable64_win10.sys" />
+        <Payload SourceFile="$(var.VbCablePayloadDirectory)\vbaudio_cable64_win7.cat" />
+        <Payload SourceFile="$(var.VbCablePayloadDirectory)\vbaudio_cable64_win7.sys" />
+        <Payload SourceFile="$(var.VbCablePayloadDirectory)\vbaudio_cable_2003.cat" />
+        <Payload SourceFile="$(var.VbCablePayloadDirectory)\vbaudio_cable_2003.sys" />
+        <Payload SourceFile="$(var.VbCablePayloadDirectory)\vbaudio_cable_vista.cat" />
+        <Payload SourceFile="$(var.VbCablePayloadDirectory)\vbaudio_cable_vista.sys" />
+        <Payload SourceFile="$(var.VbCablePayloadDirectory)\vbaudio_cable_win7.cat" />
+        <Payload SourceFile="$(var.VbCablePayloadDirectory)\vbaudio_cable_win7.sys" />
+        <Payload SourceFile="$(var.VbCablePayloadDirectory)\vbaudio_cable_xp.cat" />
+        <Payload SourceFile="$(var.VbCablePayloadDirectory)\vbaudio_cable_xp.sys" />
+        <Payload SourceFile="$(var.VbCablePayloadDirectory)\VBCABLE_ControlPanel.exe" />
+        <Payload SourceFile="$(var.VbCablePayloadDirectory)\VBCABLE_Setup.exe" />
+        <Payload SourceFile="$(var.VbCablePayloadDirectory)\vbMmeCable64_2003.inf" />
+        <Payload SourceFile="$(var.VbCablePayloadDirectory)\vbMmeCable64_vista.inf" />
+        <Payload SourceFile="$(var.VbCablePayloadDirectory)\vbMmeCable64_win10.inf" />
+        <Payload SourceFile="$(var.VbCablePayloadDirectory)\vbMmeCable64_win7.inf" />
+        <Payload SourceFile="$(var.VbCablePayloadDirectory)\vbMmeCable_2003.inf" />
+        <Payload SourceFile="$(var.VbCablePayloadDirectory)\vbMmeCable_vista.inf" />
+        <Payload SourceFile="$(var.VbCablePayloadDirectory)\vbMmeCable_win7.inf" />
+        <Payload SourceFile="$(var.VbCablePayloadDirectory)\vbMmeCable_xp.inf" />
+      </ExePackage>
       <MsiPackage SourceFile="$(var.MsiPath)" />
     </Chain>
   </Bundle>

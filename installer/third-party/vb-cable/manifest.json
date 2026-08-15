@@ -1,0 +1,8 @@
+{
+  "vendor": "VB-Audio Software",
+  "origin": "https://www.vb-cable.com/",
+  "license": "Donationware; all participations are welcome.",
+  "archive": "VBCABLE_Driver_Pack45.zip",
+  "sha256": "B950E39F01AF1D04EA623C8F6D8EB9B6EA5C477C637295FABF20631C85116BFB",
+  "setupExecutable": "VBCABLE_Setup_x64.exe"
+}

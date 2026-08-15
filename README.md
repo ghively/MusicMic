@@ -1,6 +1,6 @@
 # MusicMic
 
-MusicMic is a compact Windows 11 utility that copies one selected application's rendered audio into a microphone feed while leaving the application's normal playback untouched. It mixes that copy with one physical microphone and writes the result to the separately installed VB-CABLE virtual input.
+MusicMic is a compact Windows 11 utility that copies one selected application's rendered audio into a microphone feed while leaving the application's normal playback untouched. It mixes that copy with one physical microphone and writes the result to the VB-CABLE virtual input included by its setup program.
 
 ## Non-negotiable routing rule
 
@@ -11,7 +11,7 @@ Starting or stopping MusicMic must never change an application's playback endpoi
 - Windows 11 x64
 - .NET 10 SDK
 - Visual Studio 2022 with Desktop development with C++ for later native/WPF phases
-- VB-CABLE installed separately for end-to-end use; MusicMic does not bundle or install audio drivers
+- Administrator approval and a restart when the bundled VB-CABLE driver is first installed
 
 ## Build and test
 
@@ -24,9 +24,9 @@ powershell -ExecutionPolicy Bypass -File scripts\Publish-WinX64.ps1 -Configurati
 powershell -ExecutionPolicy Bypass -File scripts\Build-Installer.ps1 -Configuration Release -Version 1.0.0
 ```
 
-The self-contained application files are written to `artifacts\publish\win-x64\`; the installer is written to `installer\output\MusicMic.msi`. The release scripts build the native engine first and pass that exact Release x64 DLL to the managed build, so publishing does not rely on a DLL previously left in the source tree.
+The self-contained application files are written to `artifacts\publish\win-x64\`; the installers are written to `installer\output\MusicMic.msi` and `installer\output\MusicMicSetup.exe`. The release scripts build the native engine first and pass that exact Release x64 DLL to the managed build, so publishing does not rely on a DLL previously left in the source tree.
 
-The installer installs MusicMic only; install [VB-CABLE](https://vb-audio.com/Cable/) independently. In Discord, select **User Settings → Voice & Video → Input Device → CABLE Output (VB-Audio Virtual Cable)**. MusicMic writes to the complementary **CABLE Input** render endpoint.
+`MusicMicSetup.exe` includes the official base VB-CABLE driver from [VB-Audio](https://www.vb-cable.com/). VB-CABLE is donationware; all participations are welcome. Its vendor setup runs first with administrator approval, and Windows may require a reboot before `CABLE Input` and `CABLE Output` become available. MusicMic never changes the Windows default playback device. In Discord, select **User Settings → Voice & Video → Input Device → CABLE Output (VB-Audio Virtual Cable)**. MusicMic writes to the complementary **CABLE Input** render endpoint.
 
 ## Release validation
 

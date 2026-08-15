@@ -5,12 +5,16 @@
     <OutputName>MusicMicSetup</OutputName>
     <OutputPath>$(MSBuildThisFileDirectory)output\</OutputPath>
     <MsiPath Condition="'$(MsiPath)' == ''">$([System.IO.Path]::GetFullPath('$(MSBuildThisFileDirectory)output\MusicMic.msi'))</MsiPath>
+    <VbCableSetupPath Condition="'$(VbCableSetupPath)' == ''">$([System.IO.Path]::GetFullPath('$(MSBuildThisFileDirectory)third-party\vb-cable\VBCABLE_Setup_x64.exe'))</VbCableSetupPath>
+    <VbCablePayloadDirectory Condition="'$(VbCablePayloadDirectory)' == ''">$([System.IO.Path]::GetFullPath('$(MSBuildThisFileDirectory)third-party\vb-cable'))</VbCablePayloadDirectory>
     <ProductVersion Condition="'$(ProductVersion)' == ''">1.0.0</ProductVersion>
-    <DefineConstants>MsiPath=$(MsiPath);ProductVersion=$(ProductVersion)</DefineConstants>
+    <DefineConstants>MsiPath=$(MsiPath);ProductVersion=$(ProductVersion);VbCableSetupPath=$(VbCableSetupPath);VbCablePayloadDirectory=$(VbCablePayloadDirectory)</DefineConstants>
     <EnableDefaultItems>false</EnableDefaultItems>
   </PropertyGroup>
   <ItemGroup>
     <Compile Include="Bundle.wxs" />
+    <Content Include="VBCABLE-Notice.rtf" />
     <PackageReference Include="WixToolset.BootstrapperApplications.wixext" Version="5.0.2" />
+    <PackageReference Include="WixToolset.Util.wixext" Version="5.0.2" />
   </ItemGroup>
 </Project>

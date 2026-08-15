@@ -2,7 +2,9 @@
 param(
     [string]$PublishDirectory,
     [string]$MsiPath,
-    [string]$BundlePath
+    [string]$BundlePath,
+    [string]$VbCableSetupPath,
+    [string]$VbCableNoticePath
 )
 
 $ErrorActionPreference = 'Stop'
@@ -103,6 +105,58 @@ if ($BundlePath) {
     $bundleHeader = [IO.File]::ReadAllBytes($resolvedBundle)
     if ($bundleHeader.Length -lt 64 -or $bundleHeader[0] -ne 0x4D -or $bundleHeader[1] -ne 0x5A) {
         throw 'Installer smoke test failed: bootstrapper executable is not a valid Windows PE image.'
+    }
+
+    $bundlePdb = [IO.Path]::ChangeExtension($resolvedBundle, 'wixpdb')
+    if (-not (Test-Path -LiteralPath $bundlePdb -PathType Leaf)) {
+        throw 'Installer smoke test failed: bootstrapper symbol manifest is missing.'
+    }
+
+    Add-Type -AssemblyName System.IO.Compression.FileSystem
+    $bundleSymbols = [IO.Compression.ZipFile]::OpenRead($bundlePdb)
+    try {
+        $burnManifestEntry = $bundleSymbols.GetEntry('wix-burndata.xml')
+        if ($null -eq $burnManifestEntry) {
+            throw 'Installer smoke test failed: bootstrapper Burn manifest is missing.'
+        }
+
+        $manifestReader = New-Object IO.StreamReader($burnManifestEntry.Open())
+        try { $burnManifest = $manifestReader.ReadToEnd() } finally { $manifestReader.Dispose() }
+    }
+    finally {
+        $bundleSymbols.Dispose()
+    }
+
+    foreach ($requiredBundleValue in @('VbCableDriver', 'VBCABLE_Setup_x64.exe', 'VBAudioVACMME', 'license.rtf')) {
+        if (-not $burnManifest.Contains($requiredBundleValue)) {
+            throw "Installer smoke test failed: bootstrapper is missing VB-CABLE chain metadata '$requiredBundleValue'."
+        }
+    }
+}
+
+if ($VbCableSetupPath) {
+    $resolvedVbCableSetup = [IO.Path]::GetFullPath($VbCableSetupPath)
+    if (-not (Test-Path -LiteralPath $resolvedVbCableSetup -PathType Leaf)) {
+        throw 'Installer smoke test failed: VB-CABLE setup executable is missing.'
+    }
+
+    $vbCableHeader = [IO.File]::ReadAllBytes($resolvedVbCableSetup)
+    if ($vbCableHeader.Length -lt 64 -or $vbCableHeader[0] -ne 0x4D -or $vbCableHeader[1] -ne 0x5A) {
+        throw 'Installer smoke test failed: VB-CABLE setup executable is not a valid Windows PE image.'
+    }
+}
+
+if ($VbCableNoticePath) {
+    $resolvedNotice = [IO.Path]::GetFullPath($VbCableNoticePath)
+    if (-not (Test-Path -LiteralPath $resolvedNotice -PathType Leaf)) {
+        throw 'Installer smoke test failed: VB-CABLE attribution notice is missing.'
+    }
+
+    $notice = Get-Content -Raw -LiteralPath $resolvedNotice
+    foreach ($requiredNoticeValue in @('VB-Audio', 'donationware', 'https://www.vb-cable.com/', 'reboot')) {
+        if ($notice -notmatch [regex]::Escape($requiredNoticeValue)) {
+            throw "Installer smoke test failed: VB-CABLE attribution notice is missing '$requiredNoticeValue'."
+        }
     }
 }
 
