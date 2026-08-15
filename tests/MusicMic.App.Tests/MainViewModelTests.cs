@@ -76,6 +76,17 @@ public sealed class MainViewModelTests
     }
 
     [Fact]
+    public async Task Injecting_KeepsSourceAndMicrophoneGainAdjustmentEnabled()
+    {
+        var viewModel = CreateViewModel(FakeAudioEngine.Ready());
+
+        await viewModel.ToggleInjectionAsync();
+
+        Assert.True(viewModel.IsInjecting);
+        Assert.True(viewModel.CanAdjustGains);
+    }
+
+    [Fact]
     public async Task SnapshotRaisedOffUiThread_IsPostedToUiDispatcherBeforeUpdatingCollections()
     {
         FakeAudioEngine engine = FakeAudioEngine.Ready();

@@ -185,6 +185,8 @@ public sealed class MainViewModel : ObservableObject
 
     public bool CanChangeSelection => !IsInjecting;
 
+    public bool CanAdjustGains => true;
+
     public bool CanToggleInjection => IsInjecting ||
         (injection.IsOutputAvailable && SelectedSource is not null && SelectedMicrophone is not null);
 
@@ -294,6 +296,7 @@ public sealed class MainViewModel : ObservableObject
     {
         OnPropertyChanged(nameof(IsInjecting));
         OnPropertyChanged(nameof(CanChangeSelection));
+        OnPropertyChanged(nameof(CanAdjustGains));
         OnPropertyChanged(nameof(CanToggleInjection));
         OnPropertyChanged(nameof(PrimaryActionText));
         ToggleInjectionCommand.RaiseCanExecuteChanged();
