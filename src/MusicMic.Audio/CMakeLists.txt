@@ -12,6 +12,7 @@ add_library(MusicMic.Audio SHARED
     src/core_audio_discovery.cpp
     src/engine_state.cpp
     src/mixer.cpp
+    src/stream_worker.cpp
     src/exports.cpp
 )
 target_include_directories(MusicMic.Audio PUBLIC include PRIVATE src)
@@ -23,8 +24,10 @@ if(BUILD_TESTING)
     add_executable(MusicMic.Audio.Tests
         src/core_audio_discovery.cpp
         src/mixer.cpp
+        src/stream_worker.cpp
         src/engine_state.cpp
         tests/mixer_tests.cpp
+        tests/stream_worker_tests.cpp
         tests/engine_state_tests.cpp
         tests/abi_tests.cpp
         tests/core_audio_discovery_tests.cpp
