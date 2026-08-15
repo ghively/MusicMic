@@ -71,7 +71,16 @@ public sealed class MainViewModelTests
     private static MainViewModel CreateViewModel(
         FakeAudioEngine engine,
         ThemeService? themeService = null) =>
-        new(engine, new SettingsService(), themeService ?? new ThemeService());
+        new(engine, new TestSettingsService(), themeService ?? new ThemeService());
+
+    private sealed class TestSettingsService : ISettingsService
+    {
+        private MusicMicSettings settings = MusicMicSettings.Default;
+
+        public MusicMicSettings Load() => settings;
+
+        public void Save(MusicMicSettings settings) => this.settings = settings;
+    }
 
     private sealed class FakeAudioEngine : IAudioEngineService
     {
@@ -134,6 +143,8 @@ public sealed class MainViewModelTests
             Publish(snapshot with { Injection = snapshot.Injection.Stop() });
             return Task.CompletedTask;
         }
+
+        public Task HandlePowerResumeAsync(CancellationToken cancellationToken = default) => Task.CompletedTask;
 
         public ValueTask DisposeAsync() => ValueTask.CompletedTask;
 

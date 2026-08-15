@@ -19,4 +19,6 @@ public interface IAudioEngineService : IAsyncDisposable
     Task StartAsync(CancellationToken cancellationToken = default);
 
     Task StopAsync(CancellationToken cancellationToken = default);
+
+    Task HandlePowerResumeAsync(CancellationToken cancellationToken = default);
 }

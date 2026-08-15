@@ -13,4 +13,10 @@
   <ItemGroup>
     <ProjectReference Include="..\MusicMic.Core\MusicMic.Core.csproj" />
   </ItemGroup>
+  <PropertyGroup>
+    <NativeAudioLibraryPath>$(MSBuildProjectDirectory)\..\MusicMic.Audio\out-build\$(Configuration)\MusicMic.Audio.dll</NativeAudioLibraryPath>
+  </PropertyGroup>
+  <Target Name="CopyNativeAudioLibrary" AfterTargets="Build;Publish" Condition="Exists('$(NativeAudioLibraryPath)')">
+    <Copy SourceFiles="$(NativeAudioLibraryPath)" DestinationFolder="$(OutDir)" SkipUnchangedFiles="true" />
+  </Target>
 </Project>

@@ -23,6 +23,19 @@ public sealed record InjectionSnapshot
         isMicrophoneAvailable: true,
         isOutputAvailable: true);
 
+    /// <summary>Creates an immutable presentation snapshot from the native engine state.</summary>
+    public static InjectionSnapshot FromState(
+        InjectionState state,
+        bool isSourceAvailable,
+        bool isMicrophoneAvailable,
+        bool isOutputAvailable,
+        bool isInjectionActive) => new(
+        state,
+        isInjectionActive && isOutputAvailable,
+        isSourceAvailable,
+        isMicrophoneAvailable,
+        isOutputAvailable);
+
     public InjectionState State { get; private init; }
 
     public bool IsInjectionActive { get; private init; }

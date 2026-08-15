@@ -7,4 +7,7 @@ public sealed record AudioEngineSnapshot(
     IReadOnlyList<AudioApplication> Sources,
     IReadOnlyList<MicrophoneDevice> Microphones,
     string? SelectedSourceId,
-    string? SelectedMicrophoneId);
+    string? SelectedMicrophoneId,
+    float SourcePeak = 0,
+    float MicrophonePeak = 0,
+    string? ErrorMessage = null);
