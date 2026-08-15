@@ -1,0 +1,30 @@
+# .NET build output
+**/bin/
+**/obj/
+artifacts/
+
+# Repository-local .NET CLI state
+.dotnet-cli/
+
+# Visual Studio and IDE state
+.vs/
+*.user
+*.suo
+*.userosscache
+*.sln.docstates
+
+# Test output
+TestResults/
+*.coverage
+*.coveragexml
+
+# Native build output
+out/
+CMakeSettings.json
+
+# Packaging output
+installer/output/
+
+# Operating-system files
+Thumbs.db
+.DS_Store
