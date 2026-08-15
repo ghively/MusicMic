@@ -2,6 +2,7 @@
 
 #include "core_audio_discovery.h"
 #include "engine_state.h"
+#include "wasapi_streams.h"
 
 #include <algorithm>
 #include <cmath>
@@ -15,6 +16,7 @@ std::mutex engine_mutex;
 bool initialized = false;
 musicmic::EngineStateMachine engine_state;
 musicmic::CoreAudioDiscovery discovery;
+musicmic::WasapiStreams streams;
 std::wstring selected_source_id;
 std::wstring selected_microphone_id;
 std::wstring last_error;
@@ -92,6 +94,54 @@ MM_Result RefreshLocked() {
         return MM_RESULT_AUDIO_FAILURE;
     }
     ApplyDiscoveryState();
+    if (!discovery.OutputAvailable() && streams.Snapshot().running) {
+        streams.Stop();
+    }
+
+    const musicmic::WasapiStreamSnapshot stream_status = streams.Snapshot();
+    const auto recovered_source = std::ranges::find_if(
+        discovery.Sources(),
+        [](const musicmic::SourceIdentity& source) { return source.id == selected_source_id; });
+    const auto selected_microphone = std::ranges::find_if(
+        discovery.Microphones(),
+        [](const musicmic::MicrophoneIdentity& microphone) {
+            return microphone.id == selected_microphone_id;
+        });
+    if (recovered_source != discovery.Sources().end() &&
+        selected_microphone != discovery.Microphones().end() &&
+        discovery.OutputAvailable() &&
+        musicmic::ShouldRestartSource(
+            engine_state.InjectionRequested(),
+            stream_status.source_healthy,
+            recovered_source->process_id)) {
+        streams.Stop();
+        std::wstring recovery_error;
+        const MM_Result recovery_result = streams.Start(
+            recovered_source->process_id,
+            selected_microphone->id,
+            discovery.VbCableEndpointId(),
+            source_gain,
+            microphone_gain,
+            recovery_error);
+        if (recovery_result != MM_RESULT_OK) {
+            last_error = std::move(recovery_error);
+            switch (recovery_result) {
+            case MM_RESULT_MICROPHONE_UNAVAILABLE:
+                engine_state.Apply(musicmic::EngineEvent::MicrophoneLost);
+                break;
+            case MM_RESULT_OUTPUT_UNAVAILABLE:
+                engine_state.Apply(musicmic::EngineEvent::OutputLost);
+                break;
+            default:
+                engine_state.Apply(musicmic::EngineEvent::SourceLost);
+                break;
+            }
+            return recovery_result;
+        }
+        engine_state.Apply(musicmic::EngineEvent::SourceRecovered);
+        engine_state.Apply(musicmic::EngineEvent::MicrophoneRecovered);
+        last_error.clear();
+    }
     if (!discovery.OutputAvailable()) {
         last_error = L"VB-CABLE CABLE Input was not found. Install or enable VB-CABLE before starting injection.";
     } else {
@@ -119,6 +169,7 @@ MM_Result MM_CALL MM_Initialize(void) {
 
 MM_Result MM_CALL MM_Shutdown(void) {
     std::scoped_lock lock(engine_mutex);
+    streams.Stop();
     initialized = false;
     engine_state = musicmic::EngineStateMachine{};
     discovery = musicmic::CoreAudioDiscovery{};
@@ -263,6 +314,7 @@ MM_Result MM_CALL MM_SetSourceGain(float normalized_gain) {
     const MM_Result result = RequireInitialized();
     if (result == MM_RESULT_OK) {
         source_gain = normalized_gain;
+        streams.SetGains(source_gain, microphone_gain);
     }
     return result;
 }
@@ -275,6 +327,7 @@ MM_Result MM_CALL MM_SetMicrophoneGain(float normalized_gain) {
     const MM_Result result = RequireInitialized();
     if (result == MM_RESULT_OK) {
         microphone_gain = normalized_gain;
+        streams.SetGains(source_gain, microphone_gain);
     }
     return result;
 }
@@ -289,8 +342,52 @@ MM_Result MM_CALL MM_StartInjection(void) {
         last_error = L"VB-CABLE CABLE Input is unavailable; injection was not started.";
         return MM_RESULT_OUTPUT_UNAVAILABLE;
     }
-    last_error = L"Live WASAPI streams are not active in this discovery-only engine slice; injection was not started.";
-    return MM_RESULT_AUDIO_FAILURE;
+    const auto source = std::ranges::find_if(
+        discovery.Sources(),
+        [](const musicmic::SourceIdentity& item) { return item.id == selected_source_id; });
+    if (source == discovery.Sources().end()) {
+        last_error = L"The selected audio application is unavailable; process-loopback capture was not started.";
+        engine_state.Apply(musicmic::EngineEvent::SourceLost);
+        return MM_RESULT_SOURCE_UNAVAILABLE;
+    }
+    const auto microphone = std::ranges::find_if(
+        discovery.Microphones(),
+        [](const musicmic::MicrophoneIdentity& item) { return item.id == selected_microphone_id; });
+    if (microphone == discovery.Microphones().end()) {
+        last_error = L"The selected physical microphone is unavailable; capture was not started.";
+        engine_state.Apply(musicmic::EngineEvent::MicrophoneLost);
+        return MM_RESULT_MICROPHONE_UNAVAILABLE;
+    }
+
+    std::wstring stream_error;
+    const MM_Result start_result = streams.Start(
+        source->process_id,
+        microphone->id,
+        discovery.VbCableEndpointId(),
+        source_gain,
+        microphone_gain,
+        stream_error);
+    if (start_result != MM_RESULT_OK) {
+        last_error = std::move(stream_error);
+        switch (start_result) {
+        case MM_RESULT_SOURCE_UNAVAILABLE:
+            engine_state.Apply(musicmic::EngineEvent::SourceLost);
+            break;
+        case MM_RESULT_MICROPHONE_UNAVAILABLE:
+            engine_state.Apply(musicmic::EngineEvent::MicrophoneLost);
+            break;
+        case MM_RESULT_OUTPUT_UNAVAILABLE:
+            engine_state.Apply(musicmic::EngineEvent::OutputLost);
+            break;
+        default:
+            engine_state.Apply(musicmic::EngineEvent::StopRequested);
+            break;
+        }
+        return start_result;
+    }
+    engine_state.Apply(musicmic::EngineEvent::StartRequested);
+    last_error.clear();
+    return engine_state.InjectionRequested() ? MM_RESULT_OK : MM_RESULT_AUDIO_FAILURE;
 }
 
 MM_Result MM_CALL MM_StopInjection(void) {
@@ -299,6 +396,7 @@ MM_Result MM_CALL MM_StopInjection(void) {
     if (result != MM_RESULT_OK) {
         return result;
     }
+    streams.Stop();
     engine_state.Apply(musicmic::EngineEvent::StopRequested);
     last_error.clear();
     return MM_RESULT_OK;
@@ -307,7 +405,12 @@ MM_Result MM_CALL MM_StopInjection(void) {
 MM_Result MM_CALL MM_HandleSystemResume(void) {
     std::scoped_lock lock(engine_mutex);
     const MM_Result result = RequireInitialized();
-    return result == MM_RESULT_OK ? RefreshLocked() : result;
+    if (result != MM_RESULT_OK) {
+        return result;
+    }
+    streams.Stop();
+    engine_state.Apply(musicmic::EngineEvent::StopRequested);
+    return RefreshLocked();
 }
 
 MM_Result MM_CALL MM_GetStatus(MM_Status* status) {
@@ -319,15 +422,34 @@ MM_Result MM_CALL MM_GetStatus(MM_Status* status) {
     if (result != MM_RESULT_OK) {
         return result;
     }
+    musicmic::WasapiStreamSnapshot stream_status = streams.Snapshot();
+    if (engine_state.InjectionRequested()) {
+        engine_state.Apply(stream_status.source_healthy
+            ? musicmic::EngineEvent::SourceRecovered
+            : musicmic::EngineEvent::SourceLost);
+        engine_state.Apply(stream_status.microphone_healthy
+            ? musicmic::EngineEvent::MicrophoneRecovered
+            : musicmic::EngineEvent::MicrophoneLost);
+        if (!stream_status.output_healthy || !stream_status.running) {
+            streams.Stop();
+            engine_state.Apply(musicmic::EngineEvent::OutputLost);
+            stream_status = streams.Snapshot();
+        }
+        if (FAILED(stream_status.failure_result) &&
+            (!stream_status.source_healthy || !stream_status.microphone_healthy ||
+             !stream_status.output_healthy)) {
+            last_error = stream_status.error_message;
+        }
+    }
     *status = MM_Status{
         ToAbiState(engine_state.State()),
         engine_state.SourceAvailable() ? 1 : 0,
         engine_state.MicrophoneAvailable() ? 1 : 0,
         engine_state.OutputAvailable() ? 1 : 0,
         engine_state.InjectionRequested() ? 1 : 0,
-        0.0F,
-        0.0F,
-        0.0F};
+        stream_status.source_peak,
+        stream_status.microphone_peak,
+        stream_status.output_peak};
     return MM_RESULT_OK;
 }
 

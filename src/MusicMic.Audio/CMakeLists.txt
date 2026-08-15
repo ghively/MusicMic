@@ -13,11 +13,12 @@ add_library(MusicMic.Audio SHARED
     src/engine_state.cpp
     src/mixer.cpp
     src/stream_worker.cpp
+    src/wasapi_streams.cpp
     src/exports.cpp
 )
 target_include_directories(MusicMic.Audio PUBLIC include PRIVATE src)
 target_compile_definitions(MusicMic.Audio PRIVATE MUSICMIC_AUDIO_EXPORTS UNICODE _UNICODE WIN32_LEAN_AND_MEAN NOMINMAX)
-target_link_libraries(MusicMic.Audio PRIVATE Ole32 Mmdevapi Propsys)
+target_link_libraries(MusicMic.Audio PRIVATE Avrt Ole32 Mmdevapi Propsys)
 set_target_properties(MusicMic.Audio PROPERTIES OUTPUT_NAME "MusicMic.Audio")
 
 if(BUILD_TESTING)
@@ -25,9 +26,11 @@ if(BUILD_TESTING)
         src/core_audio_discovery.cpp
         src/mixer.cpp
         src/stream_worker.cpp
+        src/wasapi_streams.cpp
         src/engine_state.cpp
         tests/mixer_tests.cpp
         tests/stream_worker_tests.cpp
+        tests/wasapi_streams_tests.cpp
         tests/engine_state_tests.cpp
         tests/abi_tests.cpp
         tests/core_audio_discovery_tests.cpp
@@ -35,7 +38,7 @@ if(BUILD_TESTING)
     )
     target_include_directories(MusicMic.Audio.Tests PRIVATE include src)
     target_compile_definitions(MusicMic.Audio.Tests PRIVATE UNICODE _UNICODE WIN32_LEAN_AND_MEAN NOMINMAX)
-    target_link_libraries(MusicMic.Audio.Tests PRIVATE Ole32 Mmdevapi Propsys)
+    target_link_libraries(MusicMic.Audio.Tests PRIVATE Avrt Ole32 Mmdevapi Propsys)
     target_link_libraries(MusicMic.Audio.Tests PRIVATE MusicMic.Audio)
     add_test(NAME MusicMic.Audio.Tests COMMAND MusicMic.Audio.Tests)
 endif()
