@@ -24,6 +24,7 @@ public sealed class AudioEngineService : IAudioEngineService
         [], [], null, null);
     private bool initialized;
     private bool restoreInjectionOnResume;
+    private bool resumeRestorePending;
     private bool disposed;
     private bool sourceSelectionApplied;
     private bool microphoneSelectionApplied;
@@ -135,11 +136,13 @@ public sealed class AudioEngineService : IAudioEngineService
             if (result != NativeAudioResult.Ok)
             {
                 restoreInjectionOnResume = false;
+                resumeRestorePending = false;
                 PublishFailure(result);
                 return;
             }
 
             restoreInjectionOnResume = true;
+            resumeRestorePending = false;
             diagnostics.Write("injection-started", "Native engine accepted the injection request.");
             RefreshCore();
         }, cancellationToken).ConfigureAwait(false);
@@ -152,6 +155,7 @@ public sealed class AudioEngineService : IAudioEngineService
         await RunNativeAsync(() =>
         {
             restoreInjectionOnResume = false;
+            resumeRestorePending = false;
             NativeAudioResult result = nativeAudio.StopInjection();
             if (result != NativeAudioResult.Ok)
             {
@@ -178,6 +182,7 @@ public sealed class AudioEngineService : IAudioEngineService
         return RunNativeAsync(() =>
         {
             diagnostics.Write("system-resume", "Rebuilding audio discovery after Windows resume.");
+            resumeRestorePending = restoreInjectionOnResume;
             NativeAudioResult resume = nativeAudio.HandleSystemResume();
             if (resume != NativeAudioResult.Ok)
             {
@@ -190,20 +195,7 @@ public sealed class AudioEngineService : IAudioEngineService
             sourceSelectionApplied = false;
             microphoneSelectionApplied = false;
             RefreshCore();
-            AudioEngineSnapshot current = Snapshot;
-            if (!restoreInjectionOnResume || current.Injection.IsInjectionActive || !CanSafelyInject(current.Injection))
-            {
-                return;
-            }
-
-            NativeAudioResult start = nativeAudio.StartInjection();
-            if (start != NativeAudioResult.Ok)
-            {
-                PublishFailure(start);
-                return;
-            }
-
-            RefreshCore();
+            TryRestoreInjectionAfterResumeCore();
         }, cancellationToken);
     }
 
@@ -305,7 +297,11 @@ public sealed class AudioEngineService : IAudioEngineService
         {
             NativeAudioResult stopResult = nativeAudio.StopInjection();
             diagnostics.Write("output-unavailable", $"Stopped injection after output loss: {stopResult}.");
-            restoreInjectionOnResume = false;
+            if (!resumeRestorePending)
+            {
+                restoreInjectionOnResume = false;
+            }
+
             nativeStatus = nativeStatus with { InjectionRequested = false };
         }
 
@@ -341,6 +337,7 @@ public sealed class AudioEngineService : IAudioEngineService
                     if (initialized)
                     {
                         RefreshCore();
+                        TryRestoreInjectionAfterResumeCore();
                     }
                     else
                     {
@@ -629,6 +626,39 @@ public sealed class AudioEngineService : IAudioEngineService
 
     private static bool CanSafelyInject(InjectionSnapshot injection) =>
         injection.IsSourceAvailable && injection.IsMicrophoneAvailable && injection.IsOutputAvailable;
+
+    private void TryRestoreInjectionAfterResumeCore()
+    {
+        if (!resumeRestorePending || !restoreInjectionOnResume)
+        {
+            return;
+        }
+
+        AudioEngineSnapshot current = Snapshot;
+        if (!CanSafelyInject(current.Injection))
+        {
+            return;
+        }
+
+        if (current.Injection.IsInjectionActive)
+        {
+            resumeRestorePending = false;
+            return;
+        }
+
+        NativeAudioResult start = nativeAudio.StartInjection();
+        if (start != NativeAudioResult.Ok)
+        {
+            PublishFailure(start);
+            return;
+        }
+
+        RefreshCore();
+        if (Snapshot.Injection.IsInjectionActive)
+        {
+            resumeRestorePending = false;
+        }
+    }
 
     private static bool ShouldRecover(InjectionSnapshot injection) =>
         injection.State is InjectionState.SourceUnavailable or

@@ -252,6 +252,50 @@ public sealed class IntegrationServicesTests
     }
 
     [Fact]
+    public async Task HandlePowerResumeAsync_RetriesRequestedInjectionWhenDevicesBecomeReadyLater()
+    {
+        var delay = new ReleaseOneDelay();
+        var native = new FakeNativeAudioApi
+        {
+            Sources = [new NativeAudioSource("spotify", "Spotify", 4123, true)],
+            Microphones = [new NativeAudioMicrophone("default-mic", "Default microphone", true)],
+            Status = new NativeAudioStatus(NativeAudioState.Ready, true, true, true, false, 0, 0, 0),
+            StatusAfterResume = new NativeAudioStatus(
+                NativeAudioState.SourceUnavailable, false, true, true, false, 0, 0, 0),
+        };
+        await using var service = new AudioEngineService(native, delay);
+        await service.InitializeAsync();
+        await service.StartAsync();
+
+        await service.HandlePowerResumeAsync();
+        Assert.Equal(1, native.StartCalls);
+
+        native.Status = new NativeAudioStatus(NativeAudioState.Ready, true, true, true, false, 0, 0, 0);
+        delay.Release();
+
+        Assert.True(await WaitUntilAsync(() => native.StartCalls == 2, TimeSpan.FromSeconds(2)));
+        Assert.True(service.Snapshot.Injection.IsInjectionActive);
+    }
+
+    [Fact]
+    public async Task ShutdownCallbackGuard_DropsQueuedWorkAndContainsCallbackExceptions()
+    {
+        var guard = new ShutdownCallbackGuard();
+        int callbackCalls = 0;
+
+        await guard.RunAsync(_ => throw new InvalidOperationException("simulated callback failure"));
+        guard.BeginShutdown();
+        guard.Run(() => callbackCalls++);
+        await guard.RunAsync(_ =>
+        {
+            callbackCalls++;
+            return Task.CompletedTask;
+        });
+
+        Assert.Equal(0, callbackCalls);
+    }
+
+    [Fact]
     public void SettingsService_SaveThenLoad_RoundTripsLocalSettingsFile()
     {
         string testDirectory = Path.Combine(Path.GetTempPath(), "MusicMic.Tests", Guid.NewGuid().ToString("N"));
@@ -399,6 +443,8 @@ public sealed class IntegrationServicesTests
 
         public NativeAudioResult RefreshResult { get; set; } = NativeAudioResult.Ok;
 
+        public NativeAudioStatus? StatusAfterResume { get; set; }
+
         public IReadOnlyList<NativeAudioSource> Sources { get; set; } = [];
 
         public IReadOnlyList<NativeAudioMicrophone> Microphones { get; set; } = [];
@@ -486,7 +532,7 @@ public sealed class IntegrationServicesTests
         public NativeAudioResult HandleSystemResume()
         {
             ResumeCalls++;
-            Status = Status with { State = NativeAudioState.Ready, InjectionRequested = false };
+            Status = StatusAfterResume ?? Status with { State = NativeAudioState.Ready, InjectionRequested = false };
             return NativeAudioResult.Ok;
         }
 

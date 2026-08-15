@@ -10,6 +10,7 @@ public partial class App : System.Windows.Application
     private AudioEngineService? engine;
     private TrayService? tray;
     private MainViewModel? viewModel;
+    private readonly ShutdownCallbackGuard callbackGuard = new();
     private bool isExiting;
     private bool servicesDisposed;
 
@@ -24,7 +25,7 @@ public partial class App : System.Windows.Application
         window.Show();
         tray = new TrayService();
         tray.Initialize(
-            _ => viewModel.ToggleInjectionAsync(),
+            _ => callbackGuard.RunAsync(viewModel.ToggleInjectionAsync),
             id => viewModel.SelectedSource = viewModel.Sources.FirstOrDefault(source => source.Id == id),
             id => viewModel.SelectedMicrophone = viewModel.Microphones.FirstOrDefault(microphone => microphone.Id == id),
             OpenMainWindow,
@@ -39,6 +40,7 @@ public partial class App : System.Windows.Application
 
     protected override void OnExit(ExitEventArgs e)
     {
+        callbackGuard.BeginShutdown();
         SystemEvents.PowerModeChanged -= OnPowerModeChanged;
         SystemEvents.UserPreferenceChanged -= OnUserPreferenceChanged;
         if (!servicesDisposed)
@@ -83,6 +85,7 @@ public partial class App : System.Windows.Application
     private async void ExitFromTray()
     {
         isExiting = true;
+        callbackGuard.BeginShutdown();
         SystemEvents.PowerModeChanged -= OnPowerModeChanged;
         SystemEvents.UserPreferenceChanged -= OnUserPreferenceChanged;
         if (engine is not null)
@@ -104,7 +107,8 @@ public partial class App : System.Windows.Application
     {
         if (e.Mode == PowerModes.Resume && engine is not null)
         {
-            Dispatcher.BeginInvoke(new Action(async () => await engine.HandlePowerResumeAsync()));
+            Dispatcher.BeginInvoke(new Action(
+                () => _ = callbackGuard.RunAsync(engine.HandlePowerResumeAsync)));
         }
     }
 
@@ -112,11 +116,11 @@ public partial class App : System.Windows.Application
     {
         if (Dispatcher.CheckAccess())
         {
-            tray?.Update(snapshot);
+            callbackGuard.Run(() => tray?.Update(snapshot));
         }
         else
         {
-            Dispatcher.BeginInvoke(new Action(() => tray?.Update(snapshot)));
+            Dispatcher.BeginInvoke(new Action(() => callbackGuard.Run(() => tray?.Update(snapshot))));
         }
     }
 
@@ -124,7 +128,7 @@ public partial class App : System.Windows.Application
     {
         if (e.Category is UserPreferenceCategory.General or UserPreferenceCategory.VisualStyle)
         {
-            Dispatcher.BeginInvoke(new Action(() => viewModel?.RefreshSystemTheme()));
+            Dispatcher.BeginInvoke(new Action(() => callbackGuard.Run(() => viewModel?.RefreshSystemTheme())));
         }
     }
 }
