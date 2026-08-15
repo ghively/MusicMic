@@ -12,12 +12,15 @@ public sealed class ThemeService : IThemeService
 
     public ThemePreference CurrentTheme { get; private set; } = ThemePreference.System;
 
+    public event EventHandler? AppearanceChanged;
+
     public void ApplyTheme(ThemePreference theme)
     {
         CurrentTheme = theme;
 
         if (System.Windows.Application.Current is null)
         {
+            AppearanceChanged?.Invoke(this, EventArgs.Empty);
             return;
         }
 
@@ -41,14 +44,12 @@ public sealed class ThemeService : IThemeService
         }
 
         dictionaries.Insert(0, replacement);
+        AppearanceChanged?.Invoke(this, EventArgs.Empty);
     }
 
     public void RefreshSystemTheme()
     {
-        if (CurrentTheme == ThemePreference.System)
-        {
-            ApplyTheme(ThemePreference.System);
-        }
+        ApplyTheme(CurrentTheme);
     }
 
     private static ThemePreference ReadSystemTheme()
@@ -62,6 +63,17 @@ public sealed class ThemeService : IThemeService
 
     private static void ApplySystemAccent(ResourceDictionary resources, ThemePreference effectiveTheme)
     {
+        if (SystemParameters.HighContrast)
+        {
+            resources["WindowBackgroundBrush"] = System.Windows.SystemColors.WindowBrush;
+            resources["BackdropFallbackBrush"] = System.Windows.SystemColors.WindowBrush;
+            resources["PrimaryTextBrush"] = System.Windows.SystemColors.WindowTextBrush;
+            resources["SecondaryTextBrush"] = System.Windows.SystemColors.GrayTextBrush;
+            resources["AccentBrush"] = System.Windows.SystemColors.HighlightBrush;
+            resources["AccentForegroundBrush"] = System.Windows.SystemColors.HighlightTextBrush;
+            return;
+        }
+
         const string path = @"Software\Microsoft\Windows\CurrentVersion\Explorer\Accent";
         using RegistryKey? key = Registry.CurrentUser.OpenSubKey(path);
         if (key?.GetValue("AccentColorMenu") is not int storedColor)
@@ -75,7 +87,14 @@ public sealed class ThemeService : IThemeService
             (byte)((packed >> 8) & 0xFF),
             (byte)((packed >> 16) & 0xFF));
         resources["AccentBrush"] = FrozenBrush(accent);
-        resources["AccentHoverBrush"] = FrozenBrush(Lighten(accent, 0.16));
+        resources["AccentHoverBrush"] = FrozenBrush(ThemeColorUtilities.Blend(
+            accent,
+            effectiveTheme == ThemePreference.Dark ? Colors.White : Colors.Black,
+            effectiveTheme == ThemePreference.Dark ? 0.14 : 0.08));
+        resources["AccentPressedBrush"] = FrozenBrush(ThemeColorUtilities.Blend(accent, Colors.Black, 0.18));
+        resources["AccentForegroundBrush"] = FrozenBrush(ThemeColorUtilities.ReadableForeground(accent));
+        resources["FocusStrokeBrush"] = FrozenBrush(MediaColor.FromArgb(190, accent.R, accent.G, accent.B));
+        resources["FocusColor"] = accent;
         resources["AccentSubtleBrush"] = FrozenBrush(MediaColor.FromArgb(
             effectiveTheme == ThemePreference.Dark ? (byte)58 : (byte)28,
             accent.R,
@@ -90,8 +109,4 @@ public sealed class ThemeService : IThemeService
         return brush;
     }
 
-    private static MediaColor Lighten(MediaColor color, double amount) => MediaColor.FromRgb(
-        (byte)(color.R + ((255 - color.R) * amount)),
-        (byte)(color.G + ((255 - color.G) * amount)),
-        (byte)(color.B + ((255 - color.B) * amount)));
 }

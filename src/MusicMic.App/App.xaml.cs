@@ -10,6 +10,7 @@ public partial class App : System.Windows.Application
     private AudioEngineService? engine;
     private TrayService? tray;
     private MainViewModel? viewModel;
+    private ThemeService? themeService;
     private readonly ShutdownCallbackGuard callbackGuard = new();
     private bool isExiting;
     private bool servicesDisposed;
@@ -18,7 +19,9 @@ public partial class App : System.Windows.Application
     {
         base.OnStartup(e);
         engine = new AudioEngineService();
-        viewModel = new MainViewModel(engine, new SettingsService(), new ThemeService(), new StartupService());
+        themeService = new ThemeService();
+        themeService.AppearanceChanged += OnAppearanceChanged;
+        viewModel = new MainViewModel(engine, new SettingsService(), themeService, new StartupService());
         var window = new MainWindow { DataContext = viewModel };
         MainWindow = window;
         window.Closing += OnMainWindowClosing;
@@ -43,6 +46,10 @@ public partial class App : System.Windows.Application
         callbackGuard.BeginShutdown();
         SystemEvents.PowerModeChanged -= OnPowerModeChanged;
         SystemEvents.UserPreferenceChanged -= OnUserPreferenceChanged;
+        if (themeService is not null)
+        {
+            themeService.AppearanceChanged -= OnAppearanceChanged;
+        }
         if (!servicesDisposed)
         {
             tray?.Dispose();
@@ -126,9 +133,24 @@ public partial class App : System.Windows.Application
 
     private void OnUserPreferenceChanged(object sender, UserPreferenceChangedEventArgs e)
     {
-        if (e.Category is UserPreferenceCategory.General or UserPreferenceCategory.VisualStyle)
+        if (e.Category is UserPreferenceCategory.General or UserPreferenceCategory.VisualStyle or UserPreferenceCategory.Color)
         {
             Dispatcher.BeginInvoke(new Action(() => callbackGuard.Run(() => viewModel?.RefreshSystemTheme())));
         }
+    }
+
+    private void OnAppearanceChanged(object? sender, EventArgs e)
+    {
+        Dispatcher.BeginInvoke(new Action(() => callbackGuard.Run(() =>
+        {
+            (MainWindow as MainWindow)?.RefreshBackdrop();
+            if (MainWindow is not null)
+            {
+                foreach (Window ownedWindow in MainWindow.OwnedWindows)
+                {
+                    (ownedWindow as SettingsWindow)?.RefreshBackdrop();
+                }
+            }
+        })));
     }
 }

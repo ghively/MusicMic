@@ -2,7 +2,7 @@
 param(
     [ValidateSet('Debug', 'Release')]
     [string]$Configuration = 'Release',
-    [ValidatePattern('^\d+\.\d+\.\d+([\.-][0-9A-Za-z.-]+)?$')]
+    [ValidatePattern('^\d+\.\d+\.\d+$')]
     [string]$Version = '1.0.0',
     [string]$PublishDirectory,
     [switch]$SkipTests
@@ -20,6 +20,22 @@ if ([string]::IsNullOrWhiteSpace($PublishDirectory)) {
     $PublishDirectory = Join-Path $repositoryRoot 'artifacts\publish\win-x64'
 }
 $publishPath = [IO.Path]::GetFullPath($PublishDirectory)
+$relativePublishPath = [IO.Path]::GetRelativePath($repositoryRoot, $publishPath)
+if ($relativePublishPath.StartsWith('..') -or [IO.Path]::IsPathRooted($relativePublishPath)) {
+    throw "Publish directory must stay inside the repository: $publishPath"
+}
+
+$sourceRevision = (& git -C $repositoryRoot rev-parse HEAD).Trim()
+if ($LASTEXITCODE -ne 0 -or [string]::IsNullOrWhiteSpace($sourceRevision)) {
+    throw 'Unable to determine the Git source revision for release provenance.'
+}
+$sourceChanges = @(& git -C $repositoryRoot status --porcelain --untracked-files=all)
+if ($LASTEXITCODE -ne 0) {
+    throw 'Unable to verify the Git worktree before publishing.'
+}
+if ($sourceChanges.Count -ne 0) {
+    throw 'Release publishing requires a clean Git worktree so the embedded source revision identifies the exact packaged source.'
+}
 
 function Invoke-CheckedCommand {
     param([string]$FilePath, [string[]]$Arguments)
@@ -103,6 +119,10 @@ if (-not $SkipTests) {
     )
 }
 
+if (Test-Path -LiteralPath $publishPath -PathType Container) {
+    Remove-Item -LiteralPath $publishPath -Recurse -Force
+}
+
 Invoke-CheckedCommand dotnet @(
     'publish', $appProject,
     '-c', $Configuration,
@@ -111,6 +131,8 @@ Invoke-CheckedCommand dotnet @(
     '-p:Platform=x64',
     "-p:NativeAudioLibraryPath=$nativeDll",
     "-p:Version=$Version",
+    "-p:SourceRevisionId=$sourceRevision",
+    '-p:ContinuousIntegrationBuild=true',
     '-p:PublishSingleFile=false',
     '-p:DebugType=None',
     '-p:DebugSymbols=false',
@@ -120,6 +142,21 @@ Invoke-CheckedCommand dotnet @(
     '--nologo'
 )
 
-& (Join-Path $PSScriptRoot 'Test-Package.ps1') -PublishDirectory $publishPath
+$releaseFiles = [ordered]@{}
+foreach ($binaryName in @('MusicMic.exe', 'MusicMic.dll', 'MusicMic.Audio.dll')) {
+    $binaryPath = Join-Path $publishPath $binaryName
+    if (-not (Test-Path -LiteralPath $binaryPath -PathType Leaf)) {
+        throw "Published release binary is missing: $binaryName"
+    }
+    $releaseFiles[$binaryName] = (Get-FileHash -LiteralPath $binaryPath -Algorithm SHA256).Hash
+}
+[ordered]@{
+    version = $Version
+    sourceRevision = $sourceRevision
+    configuration = $Configuration
+    files = $releaseFiles
+} | ConvertTo-Json -Depth 4 | Set-Content -LiteralPath (Join-Path $publishPath 'release-manifest.json') -Encoding utf8NoBOM
+
+& (Join-Path $PSScriptRoot 'Test-Package.ps1') -PublishDirectory $publishPath -ExpectedVersion $Version -ExpectedSourceRevision $sourceRevision
 
 Write-Host "Published MusicMic $Version to $publishPath"

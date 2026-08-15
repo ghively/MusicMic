@@ -4,7 +4,9 @@ param(
     [string]$MsiPath,
     [string]$BundlePath,
     [string]$VbCableSetupPath,
-    [string]$VbCableNoticePath
+    [string]$VbCableNoticePath,
+    [string]$ExpectedVersion,
+    [string]$ExpectedSourceRevision
 )
 
 $ErrorActionPreference = 'Stop'
@@ -19,7 +21,7 @@ if (-not (Test-Path -LiteralPath $publishPath -PathType Container)) {
     throw "Publish directory does not exist: $publishPath"
 }
 
-$requiredFiles = @('MusicMic.exe', 'MusicMic.deps.json', 'MusicMic.runtimeconfig.json', 'MusicMic.Audio.dll')
+$requiredFiles = @('MusicMic.exe', 'MusicMic.dll', 'MusicMic.deps.json', 'MusicMic.runtimeconfig.json', 'MusicMic.Audio.dll', 'release-manifest.json')
 foreach ($requiredFile in $requiredFiles) {
     $path = Join-Path $publishPath $requiredFile
     if (-not (Test-Path -LiteralPath $path -PathType Leaf)) {
@@ -45,6 +47,22 @@ if ($peOffset -lt 0 -or ($peOffset + 6) -gt $nativeHeader.Length -or $nativeHead
 $machine = [BitConverter]::ToUInt16($nativeHeader, $peOffset + 4)
 if ($machine -ne 0x8664) {
     throw ('Package smoke test failed: MusicMic.Audio.dll is not x64 (PE machine 0x{0:X4}).' -f $machine)
+}
+
+$releaseManifestPath = Join-Path $publishPath 'release-manifest.json'
+$releaseManifest = Get-Content -Raw -LiteralPath $releaseManifestPath | ConvertFrom-Json
+if ($ExpectedVersion -and $releaseManifest.version -ne $ExpectedVersion) {
+    throw "Package smoke test failed: release manifest version '$($releaseManifest.version)' does not match '$ExpectedVersion'."
+}
+if ($ExpectedSourceRevision -and $releaseManifest.sourceRevision -ne $ExpectedSourceRevision) {
+    throw "Package smoke test failed: release manifest revision '$($releaseManifest.sourceRevision)' does not match '$ExpectedSourceRevision'."
+}
+foreach ($binaryName in @('MusicMic.exe', 'MusicMic.dll', 'MusicMic.Audio.dll')) {
+    $expectedHash = $releaseManifest.files.$binaryName
+    $actualHash = (Get-FileHash -LiteralPath (Join-Path $publishPath $binaryName) -Algorithm SHA256).Hash
+    if ([string]::IsNullOrWhiteSpace($expectedHash) -or $actualHash -ne $expectedHash) {
+        throw "Package smoke test failed: release manifest hash does not match $binaryName."
+    }
 }
 
 if ($MsiPath) {
@@ -80,6 +98,26 @@ if ($MsiPath) {
         $actual = Get-MsiProperty -Name $entry.Key
         if ($actual -ne $entry.Value) {
             throw "Installer smoke test failed: MSI property $($entry.Key) is '$actual', expected '$($entry.Value)'."
+        }
+    }
+
+    if ($ExpectedVersion) {
+        $actualVersion = Get-MsiProperty -Name 'ProductVersion'
+        if ($actualVersion -ne $ExpectedVersion) {
+            throw "Installer smoke test failed: MSI ProductVersion is '$actualVersion', expected '$ExpectedVersion'."
+        }
+    }
+
+    $fileView = $database.OpenView('SELECT `FileName` FROM `File`')
+    $fileView.Execute()
+    $msiFileNames = [Collections.Generic.List[string]]::new()
+    while ($fileRecord = $fileView.Fetch()) {
+        $msiFileNames.Add(($fileRecord.StringData(1) -split '\|')[-1])
+    }
+    $fileView.Close()
+    foreach ($requiredBinary in @('MusicMic.exe', 'MusicMic.dll', 'MusicMic.Audio.dll', 'release-manifest.json')) {
+        if (($msiFileNames | Where-Object { $_ -eq $requiredBinary }).Count -ne 1) {
+            throw "Installer smoke test failed: MSI must contain exactly one $requiredBinary."
         }
     }
 

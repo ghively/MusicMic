@@ -78,12 +78,17 @@ public sealed class MainViewModelTests
     [Fact]
     public async Task Injecting_KeepsSourceAndMicrophoneGainAdjustmentEnabled()
     {
-        var viewModel = CreateViewModel(FakeAudioEngine.Ready());
+        FakeAudioEngine engine = FakeAudioEngine.Ready();
+        var viewModel = CreateViewModel(engine);
 
         await viewModel.ToggleInjectionAsync();
+        viewModel.SourcePercentage = 42;
+        viewModel.MicrophonePercentage = 73;
 
         Assert.True(viewModel.IsInjecting);
         Assert.True(viewModel.CanAdjustGains);
+        Assert.Equal(0.42, engine.LastSourceGain, precision: 3);
+        Assert.Equal(0.73, engine.LastMicrophoneGain, precision: 3);
     }
 
     [Fact]
@@ -121,6 +126,18 @@ public sealed class MainViewModelTests
         Assert.Equal(ThemePreference.Dark, viewModel.Theme);
     }
 
+    [Fact]
+    public void ThemeService_NotifiesWindowAppearanceAfterThemeChoiceChanges()
+    {
+        var themeService = new ThemeService();
+        int notifications = 0;
+        themeService.AppearanceChanged += (_, _) => notifications++;
+
+        themeService.ApplyTheme(ThemePreference.Dark);
+
+        Assert.Equal(1, notifications);
+    }
+
     private static MainViewModel CreateViewModel(
         FakeAudioEngine engine,
         ThemeService? themeService = null) =>
@@ -155,6 +172,10 @@ public sealed class MainViewModelTests
         public int SourceSelectionCalls { get; private set; }
 
         public int MicrophoneSelectionCalls { get; private set; }
+
+        public double LastSourceGain { get; private set; }
+
+        public double LastMicrophoneGain { get; private set; }
 
         public static FakeAudioEngine Ready()
         {
@@ -195,9 +216,9 @@ public sealed class MainViewModelTests
             Publish(snapshot with { SelectedMicrophoneId = microphoneId });
         }
 
-        public void SetSourceGain(double gain) { }
+        public void SetSourceGain(double gain) => LastSourceGain = gain;
 
-        public void SetMicrophoneGain(double gain) { }
+        public void SetMicrophoneGain(double gain) => LastMicrophoneGain = gain;
 
         public Task StartAsync(CancellationToken cancellationToken = default)
         {

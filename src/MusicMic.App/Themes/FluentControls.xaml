@@ -1,0 +1,82 @@
+<ResourceDictionary xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+                    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+                    xmlns:services="clr-namespace:MusicMic.App.Services">
+    <services:SelectionDisplayNameConverter x:Key="SelectionDisplayNameConverter" />
+    <Style x:Key="FluentIconButtonStyle" TargetType="Button">
+        <Setter Property="Width" Value="36" /><Setter Property="Height" Value="36" /><Setter Property="Padding" Value="0" />
+        <Setter Property="Background" Value="Transparent" /><Setter Property="Foreground" Value="{DynamicResource PrimaryTextBrush}" />
+        <Setter Property="BorderThickness" Value="0" /><Setter Property="FontFamily" Value="Segoe Fluent Icons" /><Setter Property="FontSize" Value="15" /><Setter Property="Cursor" Value="Hand" />
+        <Setter Property="Template"><Setter.Value><ControlTemplate TargetType="Button">
+            <Border x:Name="Surface" Background="{TemplateBinding Background}" CornerRadius="5"><ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center" /></Border>
+            <ControlTemplate.Triggers>
+                <Trigger Property="IsMouseOver" Value="True"><Setter TargetName="Surface" Property="Background" Value="{DynamicResource ControlFillHoverBrush}" /></Trigger>
+                <Trigger Property="IsPressed" Value="True"><Setter TargetName="Surface" Property="Background" Value="{DynamicResource ControlFillPressedBrush}" /><Setter Property="Opacity" Value="0.82" /></Trigger>
+                <Trigger Property="IsKeyboardFocused" Value="True"><Setter TargetName="Surface" Property="BorderBrush" Value="{DynamicResource FocusStrokeBrush}" /><Setter TargetName="Surface" Property="BorderThickness" Value="2" /></Trigger>
+                <Trigger Property="IsEnabled" Value="False"><Setter Property="Opacity" Value="0.4" /></Trigger>
+            </ControlTemplate.Triggers>
+        </ControlTemplate></Setter.Value></Setter>
+    </Style>
+
+    <Style x:Key="FluentActionButtonStyle" TargetType="Button">
+        <Setter Property="Height" Value="40" /><Setter Property="Padding" Value="18,0" />
+        <Setter Property="Background" Value="{DynamicResource AccentBrush}" /><Setter Property="Foreground" Value="{DynamicResource AccentForegroundBrush}" />
+        <Setter Property="BorderThickness" Value="0" /><Setter Property="FontWeight" Value="SemiBold" /><Setter Property="Cursor" Value="Hand" />
+        <Setter Property="Template"><Setter.Value><ControlTemplate TargetType="Button">
+            <Border x:Name="Surface" Background="{TemplateBinding Background}" BorderBrush="{TemplateBinding BorderBrush}" BorderThickness="{TemplateBinding BorderThickness}" CornerRadius="5"><ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center" /></Border>
+            <ControlTemplate.Triggers>
+                <Trigger Property="IsMouseOver" Value="True"><Setter TargetName="Surface" Property="Background" Value="{DynamicResource AccentHoverBrush}" /></Trigger>
+                <Trigger Property="IsPressed" Value="True"><Setter TargetName="Surface" Property="Background" Value="{DynamicResource AccentPressedBrush}" /></Trigger>
+                <Trigger Property="IsKeyboardFocused" Value="True"><Setter TargetName="Surface" Property="BorderBrush" Value="{DynamicResource FocusStrokeBrush}" /><Setter TargetName="Surface" Property="BorderThickness" Value="2" /></Trigger>
+                <Trigger Property="IsEnabled" Value="False"><Setter Property="Opacity" Value="0.42" /></Trigger>
+            </ControlTemplate.Triggers>
+        </ControlTemplate></Setter.Value></Setter>
+    </Style>
+
+    <Style x:Key="FluentComboBoxStyle" TargetType="ComboBox">
+        <Style.Resources><sys:String xmlns:sys="clr-namespace:System;assembly=System.Runtime" x:Key="ContractName">FluentComboBoxStyle</sys:String></Style.Resources>
+        <Setter Property="Height" Value="34" /><Setter Property="Padding" Value="9,0,32,0" /><Setter Property="Background" Value="Transparent" />
+        <Setter Property="Foreground" Value="{DynamicResource PrimaryTextBrush}" /><Setter Property="BorderBrush" Value="Transparent" /><Setter Property="BorderThickness" Value="1" />
+        <Setter Property="ScrollViewer.HorizontalScrollBarVisibility" Value="Disabled" /><Setter Property="ScrollViewer.VerticalScrollBarVisibility" Value="Auto" />
+        <Setter Property="Template"><Setter.Value><ControlTemplate TargetType="ComboBox">
+            <Grid>
+                <Border x:Name="ControlSurface" Background="{TemplateBinding Background}" BorderBrush="{TemplateBinding BorderBrush}" BorderThickness="{TemplateBinding BorderThickness}" CornerRadius="5" />
+                <ToggleButton Background="Transparent" BorderThickness="0" Focusable="False" ClickMode="Press" IsChecked="{Binding IsDropDownOpen, Mode=TwoWay, RelativeSource={RelativeSource TemplatedParent}}"><ToggleButton.Template><ControlTemplate TargetType="ToggleButton"><Border Background="Transparent" /></ControlTemplate></ToggleButton.Template></ToggleButton>
+                <TextBlock Margin="{TemplateBinding Padding}" VerticalAlignment="Center" IsHitTestVisible="False"
+                           Text="{Binding SelectedItem, RelativeSource={RelativeSource TemplatedParent}, Converter={StaticResource SelectionDisplayNameConverter}}"
+                           Foreground="{TemplateBinding Foreground}" TextTrimming="CharacterEllipsis" />
+                <TextBlock Text="&#xE70D;" FontFamily="Segoe Fluent Icons" FontSize="11" Margin="0,0,11,0" HorizontalAlignment="Right" VerticalAlignment="Center" IsHitTestVisible="False" />
+                <Popup x:Name="PART_Popup" Placement="Bottom" AllowsTransparency="True" Focusable="False" PopupAnimation="Fade" IsOpen="{TemplateBinding IsDropDownOpen}">
+                    <Border Margin="0,4,0,0" MinWidth="{Binding ActualWidth, RelativeSource={RelativeSource TemplatedParent}}" MaxHeight="260" Padding="4" Background="{DynamicResource PopupFillBrush}" BorderBrush="{DynamicResource DividerBrush}" BorderThickness="1" CornerRadius="7"><ScrollViewer CanContentScroll="True"><ItemsPresenter KeyboardNavigation.DirectionalNavigation="Contained" /></ScrollViewer></Border>
+                </Popup>
+            </Grid>
+            <ControlTemplate.Triggers>
+                <Trigger Property="IsMouseOver" Value="True"><Setter TargetName="ControlSurface" Property="Background" Value="{DynamicResource ControlFillHoverBrush}" /></Trigger>
+                <Trigger Property="IsDropDownOpen" Value="True"><Setter TargetName="ControlSurface" Property="Background" Value="{DynamicResource ControlFillPressedBrush}" /><Setter TargetName="ControlSurface" Property="BorderBrush" Value="{DynamicResource FocusStrokeBrush}" /></Trigger>
+                <Trigger Property="IsKeyboardFocusWithin" Value="True"><Setter TargetName="ControlSurface" Property="BorderBrush" Value="{DynamicResource FocusStrokeBrush}" /><Setter TargetName="ControlSurface" Property="BorderThickness" Value="2" /></Trigger>
+                <Trigger Property="IsEnabled" Value="False"><Setter Property="Opacity" Value="0.52" /></Trigger>
+            </ControlTemplate.Triggers>
+        </ControlTemplate></Setter.Value></Setter>
+        <Setter Property="ItemContainerStyle"><Setter.Value><Style TargetType="ComboBoxItem">
+            <Setter Property="Padding" Value="10,7" /><Setter Property="Margin" Value="0,1" /><Setter Property="HorizontalContentAlignment" Value="Stretch" />
+            <Setter Property="Template"><Setter.Value><ControlTemplate TargetType="ComboBoxItem"><Border x:Name="ItemSurface" Background="Transparent" CornerRadius="4"><ContentPresenter /></Border><ControlTemplate.Triggers><Trigger Property="IsHighlighted" Value="True"><Setter TargetName="ItemSurface" Property="Background" Value="{DynamicResource ControlFillHoverBrush}" /></Trigger><Trigger Property="IsSelected" Value="True"><Setter TargetName="ItemSurface" Property="Background" Value="{DynamicResource AccentSubtleBrush}" /></Trigger></ControlTemplate.Triggers></ControlTemplate></Setter.Value></Setter>
+        </Style></Setter.Value></Setter>
+    </Style>
+
+    <Style x:Key="FluentSliderStyle" TargetType="Slider">
+        <Style.Resources><sys:String xmlns:sys="clr-namespace:System;assembly=System.Runtime" x:Key="ContractName">FluentSliderStyle</sys:String></Style.Resources>
+        <Setter Property="Height" Value="28" /><Setter Property="IsMoveToPointEnabled" Value="True" /><Setter Property="SmallChange" Value="1" /><Setter Property="LargeChange" Value="10" />
+        <Setter Property="Template"><Setter.Value><ControlTemplate TargetType="Slider">
+            <Grid Background="Transparent" UseLayoutRounding="True">
+                <Track x:Name="PART_Track" VerticalAlignment="Center">
+                    <Track.DecreaseRepeatButton><RepeatButton Command="Slider.DecreaseLarge" Focusable="False"><RepeatButton.Template><ControlTemplate TargetType="RepeatButton"><Border Height="4" Background="{DynamicResource AccentBrush}" CornerRadius="2" /></ControlTemplate></RepeatButton.Template></RepeatButton></Track.DecreaseRepeatButton>
+                    <Track.IncreaseRepeatButton><RepeatButton Command="Slider.IncreaseLarge" Focusable="False"><RepeatButton.Template><ControlTemplate TargetType="RepeatButton"><Border Height="4" Background="{DynamicResource SliderTrackBrush}" CornerRadius="2" /></ControlTemplate></RepeatButton.Template></RepeatButton></Track.IncreaseRepeatButton>
+                    <Track.Thumb><Thumb x:Name="Thumb" Width="20" Height="24"><Thumb.Template><ControlTemplate TargetType="Thumb"><Grid><Ellipse x:Name="Halo" Width="20" Height="20" Fill="Transparent" /><Ellipse x:Name="Knob" Width="16" Height="16" Fill="{DynamicResource AccentBrush}" Stroke="{DynamicResource SliderThumbBorderBrush}" StrokeThickness="2" /></Grid><ControlTemplate.Triggers><Trigger Property="IsMouseOver" Value="True"><Setter TargetName="Halo" Property="Fill" Value="{DynamicResource AccentSubtleBrush}" /><Setter TargetName="Knob" Property="Width" Value="18" /><Setter TargetName="Knob" Property="Height" Value="18" /></Trigger><Trigger Property="IsDragging" Value="True"><Setter TargetName="Knob" Property="Width" Value="14" /><Setter TargetName="Knob" Property="Height" Value="14" /><Setter TargetName="Knob" Property="Fill" Value="{DynamicResource AccentPressedBrush}" /></Trigger></ControlTemplate.Triggers></ControlTemplate></Thumb.Template></Thumb></Track.Thumb>
+                </Track>
+            </Grid>
+            <ControlTemplate.Triggers>
+                <Trigger Property="IsKeyboardFocused" Value="True"><Setter Property="Effect"><Setter.Value><DropShadowEffect BlurRadius="5" ShadowDepth="0" Color="{DynamicResource FocusColor}" Opacity="0.65" /></Setter.Value></Setter></Trigger>
+                <Trigger Property="IsEnabled" Value="False"><Setter Property="Opacity" Value="0.4" /></Trigger>
+            </ControlTemplate.Triggers>
+        </ControlTemplate></Setter.Value></Setter>
+    </Style>
+</ResourceDictionary>
