@@ -116,7 +116,7 @@ if ($MsiPath) {
     }
     $fileView.Close()
     foreach ($requiredBinary in @('MusicMic.exe', 'MusicMic.dll', 'MusicMic.Audio.dll', 'release-manifest.json')) {
-        if (($msiFileNames | Where-Object { $_ -eq $requiredBinary }).Count -ne 1) {
+        if (@($msiFileNames | Where-Object { $_ -eq $requiredBinary }).Count -ne 1) {
             throw "Installer smoke test failed: MSI must contain exactly one $requiredBinary."
         }
     }
