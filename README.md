@@ -8,11 +8,15 @@ Everyone in your call hears your music and your voice. You keep hearing the app 
 
 ## Install
 
+**[Download the latest MusicMicSetup.exe](https://github.com/ghively/MusicMic/releases/latest)** — Windows 11 x64.
+
 1. Run **MusicMicSetup.exe** and approve the administrator prompt.
 2. The bundled [VB-Audio](https://www.vb-cable.com/) VB-CABLE driver installs first. **Restart Windows if it asks** — `CABLE Input` and `CABLE Output` do not appear until you do.
 3. MusicMic starts in the notification area and shows a "MusicMic is running" notification once, so you can find its icon.
 
 Installing over an existing copy replaces it; you will not end up with two entries in Programs and Features. VB-CABLE is donationware and is left installed when you uninstall MusicMic — all participations to VB-Audio are welcome.
+
+MusicMic is not code-signed, so Windows SmartScreen warns the first time you run the setup: choose **More info → Run anyway**. Every release lists the SHA-256 checksums of its downloads so you can confirm you have the file the build produced.
 
 ## Use it
 
@@ -84,7 +88,11 @@ Installing removes the MusicMic already on the machine rather than adding a seco
 
 **Give each release a version higher than the last** (`-Version 1.2.0`). The bootstrapper's Programs and Features entry is keyed on its own version, and two bundles built at the same version will register separately no matter what the package inside them does. The current version is **1.1.0**.
 
+Pushing a `vX.Y.Z` tag is what publishes a release. `.github/workflows/release.yml` runs the same `Build-Installer.ps1` on a Windows runner, takes the version from the tag, and attaches `MusicMicSetup.exe`, `MusicMic.msi`, and their checksums to the GitHub release. The workflow can also be run manually against a version to build the installers without publishing anything.
+
 ## Release validation
+
+`.github/workflows/ci.yml` runs the full package path — native engine, native and managed tests, publish, MSI, bootstrapper, smoke test — on every push and pull request to `main`, so a release tag builds code the same runner has already packaged.
 
 The automated package smoke test checks the self-contained publish layout, the required native DLL, its non-empty PE image, its x64 architecture, and the MSI product metadata. Before release, complete the hardware acceptance matrix as well: source-only, microphone-only, and combined audio; selected-process privacy; source/microphone/sleep recovery; installer/uninstaller/reinstall; and direct verification that Start and Stop preserve the selected app's playback endpoint, volume, mute state, playback state, and Windows defaults. These hardware-dependent checks cannot be simulated by the build scripts.
 

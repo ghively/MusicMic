@@ -1,0 +1,115 @@
+name: Release
+
+on:
+  push:
+    tags:
+      - 'v[0-9]+.[0-9]+.[0-9]+'
+  workflow_dispatch:
+    inputs:
+      version:
+        description: Version to build as x.y.z. Builds and uploads the installers without publishing a release.
+        required: true
+
+permissions:
+  contents: write
+
+concurrency:
+  group: release-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  installers:
+    name: Build and publish the installers
+    runs-on: windows-latest
+    timeout-minutes: 90
+
+    steps:
+      - name: Check out the tagged source
+        uses: actions/checkout@v4
+
+      - name: Resolve the release version
+        id: release
+        shell: pwsh
+        env:
+          REF_NAME: ${{ github.ref_name }}
+          INPUT_VERSION: ${{ inputs.version }}
+        run: |
+          $version = if ($env:GITHUB_REF_TYPE -eq 'tag') { $env:REF_NAME -replace '^v', '' } else { $env:INPUT_VERSION }
+          if ($version -notmatch '^\d+\.\d+\.\d+$') {
+              throw "Release version must be x.y.z, not '$version'."
+          }
+          $publish = if ($env:GITHUB_REF_TYPE -eq 'tag') { 'true' } else { 'false' }
+          "version=$version" >> $env:GITHUB_OUTPUT
+          "publish=$publish" >> $env:GITHUB_OUTPUT
+          Write-Host "Building MusicMic $version (publish release: $publish)"
+
+      - name: Install the .NET SDK
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: |
+            8.0.x
+            10.0.x
+
+      # Build-Installer.ps1 builds the native x64 engine, runs the native and
+      # managed tests, publishes the self-contained app, builds the MSI and the
+      # bootstrapper, and runs the package smoke test. The release is the same
+      # command a maintainer runs locally, so CI cannot drift from the documented
+      # build.
+      - name: Build the engine, run the tests, and package the installers
+        shell: pwsh
+        run: ./scripts/Build-Installer.ps1 -Configuration Release -Version ${{ steps.release.outputs.version }}
+
+      - name: Record the download checksums
+        shell: pwsh
+        run: |
+          $output = Join-Path (Get-Location) 'installer/output'
+          Get-FileHash -Algorithm SHA256 -LiteralPath (Join-Path $output 'MusicMicSetup.exe'), (Join-Path $output 'MusicMic.msi') |
+              ForEach-Object { '{0}  {1}' -f $_.Hash.ToLower(), (Split-Path -Leaf $_.Path) } |
+              Set-Content -LiteralPath (Join-Path $output 'SHA256SUMS.txt') -Encoding utf8NoBOM
+          Get-Content -LiteralPath (Join-Path $output 'SHA256SUMS.txt')
+
+      # Uploaded before the release is created, so a failure at the publishing
+      # step still leaves the built installers downloadable from the run.
+      - name: Keep the installers on the workflow run
+        uses: actions/upload-artifact@v4
+        with:
+          name: musicmic-${{ steps.release.outputs.version }}
+          if-no-files-found: error
+          path: |
+            installer/output/MusicMicSetup.exe
+            installer/output/MusicMic.msi
+            installer/output/SHA256SUMS.txt
+
+      - name: Publish the GitHub release
+        if: steps.release.outputs.publish == 'true'
+        shell: pwsh
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TAG: ${{ github.ref_name }}
+          VERSION: ${{ steps.release.outputs.version }}
+        run: |
+          $checksums = (Get-Content -Raw -LiteralPath 'installer/output/SHA256SUMS.txt').Trim()
+          $notes = @(
+              "Download **MusicMicSetup.exe** below, run it, and approve the administrator prompt. The bundled VB-Audio VB-CABLE driver installs first — restart Windows if it asks, because ``CABLE Input`` and ``CABLE Output`` do not appear until you do.",
+              '',
+              'MusicMicSetup.exe is the installer to use. MusicMic.msi is the package it carries, published for deployment tooling that wants the MSI alone; it does not install VB-CABLE.',
+              '',
+              'These binaries are not code-signed, so Windows SmartScreen warns on first run: choose **More info → Run anyway**. Verify your download against these SHA-256 checksums:',
+              '',
+              '```',
+              $checksums,
+              '```',
+              '',
+              "Built by [this workflow run]($env:GITHUB_SERVER_URL/$env:GITHUB_REPOSITORY/actions/runs/$env:GITHUB_RUN_ID) from ``$env:GITHUB_SHA``. See the [README]($env:GITHUB_SERVER_URL/$env:GITHUB_REPOSITORY/blob/$env:TAG/README.md) for how to use it."
+          ) -join "`n"
+          $notesPath = Join-Path $env:RUNNER_TEMP 'release-notes.md'
+          Set-Content -LiteralPath $notesPath -Value $notes -Encoding utf8NoBOM
+
+          gh release create $env:TAG `
+              --title "MusicMic $env:VERSION" `
+              --notes-file $notesPath `
+              --verify-tag `
+              installer/output/MusicMicSetup.exe `
+              installer/output/MusicMic.msi `
+              installer/output/SHA256SUMS.txt
+          if ($LASTEXITCODE -ne 0) { throw "gh release create failed with exit code $LASTEXITCODE." }

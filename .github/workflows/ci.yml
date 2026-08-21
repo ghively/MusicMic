@@ -1,0 +1,50 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  package:
+    name: Build, test, and package
+    runs-on: windows-latest
+    timeout-minutes: 90
+
+    steps:
+      - name: Check out the source
+        uses: actions/checkout@v4
+
+      - name: Install the .NET SDK
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: |
+            8.0.x
+            10.0.x
+
+      # The whole release path on every push: native engine, native and managed
+      # tests, self-contained publish, MSI, bootstrapper, package smoke test.
+      # 0.0.0 marks these artifacts as unreleasable; a real version only comes
+      # from a tag in release.yml.
+      - name: Build the engine, run the tests, and package the installers
+        shell: pwsh
+        run: ./scripts/Build-Installer.ps1 -Configuration Release -Version 0.0.0
+
+      - name: Keep the packaged output on the workflow run
+        uses: actions/upload-artifact@v4
+        with:
+          name: musicmic-ci-${{ github.sha }}
+          retention-days: 7
+          if-no-files-found: error
+          path: |
+            installer/output/MusicMicSetup.exe
+            installer/output/MusicMic.msi
