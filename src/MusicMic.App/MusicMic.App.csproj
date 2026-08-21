@@ -16,6 +16,19 @@
     <Description>Shares one application's audio and one microphone as a single virtual microphone.</Description>
   </PropertyGroup>
 
+  <!--
+    Windows Forms is enabled for the notification-area icon alone, but its implicit
+    usings put System.Drawing and System.Windows.Forms into every file beside WPF's,
+    where Brushes, Color, and KeyEventArgs each name two types. WPF's markup
+    compilation pass resolves the ambiguity before this project's own using
+    directives can settle it, so the app does not compile there. The three tray
+    files import both namespaces explicitly and are unaffected.
+  -->
+  <ItemGroup>
+    <Using Remove="System.Drawing" />
+    <Using Remove="System.Windows.Forms" />
+  </ItemGroup>
+
   <ItemGroup>
     <Resource Include="Assets\MusicMic.ico" />
   </ItemGroup>
