@@ -2,6 +2,11 @@ using System.Windows;
 using System.Windows.Input;
 using System.Windows.Media.Animation;
 
+// The app enables both WPF and Windows Forms, so implicit usings bring in two
+// KeyEventArgs. WPF's markup-compilation pass does not honour this file's own using
+// directive, so name the input one outright rather than let that pass fail.
+using KeyEventArgs = System.Windows.Input.KeyEventArgs;
+
 namespace MusicMic.App;
 
 /// <summary>
